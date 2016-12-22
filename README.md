@@ -1,7 +1,7 @@
 # scripts
 useful scripts
 
-## findre
+## findre.pl
 
 Find recursively for code parts, like variables.
 
