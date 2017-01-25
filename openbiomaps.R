@@ -6,6 +6,8 @@
 # PLEASE HELP:
 # Is there anybody want to build a package from this? I have no time...
 #
+# Its done:
+# https://github.com/OpenBioMaps/obm.r
 
 library(httr)
 OBM <- new.env()
