@@ -8,6 +8,7 @@
 #
 # Its done:
 # https://github.com/OpenBioMaps/obm.r
+# This version is deprecated
 
 library(httr)
 OBM <- new.env()
