@@ -18,6 +18,8 @@ use this to setup a perodical sql dump of your important tables
 simplified OAuth2 based api interface for R users to work with data in postgresql database
 retreive all or selection of data into data.frame and more....
 
+deprecated here! MOVED TO obm.r repository!!!
+
 ## create_table_from_csv.R
 
 cml R script to create ALTER TABLE... SQL lines to extend an existing database table with several new columns.
