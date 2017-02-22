@@ -4,18 +4,20 @@
 # You can specify filename patterns
 # Result is going to the standard output
 # 
-# 2006.08.01 / BÃ¡n MiklÃ³s / banm@kornel.zool.klte.hu
+# 2006.08.01 / Bán Miklós / banm@kornel.zool.klte.hu
+# 2017.02.19
 
 print "Type the string for search it:\n";
 if ($ARGV[0]) {
-	$searchstring = $ARGV[0];
+	$searchstring = join " ", @ARGV;
 } else {
 	$searchstring = <STDIN>;
 }
 chomp ($searchstring);
-
-# what is ums_repository?
-# https://github.com/miklosban/ums
+$lqqote = "'";
+if ($searchstring =~ /'/) {
+    $lqqote = '"';
+}
 $exclude_path = " -not -path '*UMS_REPOSITORY/*'";
 
 print "Type the filename pattern (default: *, example: *.html,*.txt):\n";
@@ -33,10 +35,12 @@ if ($filepattern eq '') {
   ($FP,) = split(/ -o $/,$FP,2);
   $FP .= " \\)";
 }
-print "Searching for `$searchstring` in ./$filepattern    --->\n\n";
-print "find -type f $FP -exec grep -lq '$searchstring' '{}' \\; -print\n";
-
-system( "find -type f $FP -exec grep -lq '$searchstring' '{}' \\; -print");
+#print "Searching for `$searchstring` in ./$filepattern    --->\n\n";
+$cmd = sprintf("find -type f %s -exec grep -lq %s%s%s '{}' \\; -print\n",$FP,$lqqote,$searchstring,$lqqote);
+print "\t$cmd\n";
+system($cmd);
+#print "find -type f $FP -exec grep -lq '$searchstring' '{}' \\; -print\n";
+#system( "find -type f $FP -exec grep -lq '$searchstring' '{}' \\; -print");
 
 #find example
 #find . \( -name '*.php' -o -name '*.html' \) -exec grep -lq "examplestring" '{}' \; -print
