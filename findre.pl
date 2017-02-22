@@ -6,7 +6,12 @@
 # 
 # 2006.08.01 / Bán Miklós / banm@kornel.zool.klte.hu
 # 2017.02.19
+#
 
+$exclude_path = " -not -path '*UMS_REPOSITORY/*'";
+
+
+## code
 print "Type the string for search it:\n";
 if ($ARGV[0]) {
 	$searchstring = join " ", @ARGV;
@@ -18,7 +23,6 @@ $lqqote = "'";
 if ($searchstring =~ /'/) {
     $lqqote = '"';
 }
-$exclude_path = " -not -path '*UMS_REPOSITORY/*'";
 
 print "Type the filename pattern (default: *, example: *.html,*.txt):\n";
 $filepattern = <STDIN>;
