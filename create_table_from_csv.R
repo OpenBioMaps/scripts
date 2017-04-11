@@ -34,7 +34,7 @@ if (length(args)==0) {
     }
 }
 
-analyse <- function(col,counter) {
+analyse <- function(col,counter,na.drop=T) {
     type <- class( col )
     flev <- length(levels(as.factor(col)))
     if (type == 'integer') {
@@ -42,16 +42,20 @@ analyse <- function(col,counter) {
             type = 'boolen'
             return(type)
         } else {
-            return(type)
+            return('smallint')
         }
     } else if (type == 'numeric') {
-        return(type)
+        return('real')
     } else if (type == 'logical' && flev == 2 ) {
             type = 'boolen'
             return(type)
     } 
     
     if (type == 'factor' || type == 'logical') {
+        # drop empty cells if na.action=''
+        if (na.drop==T) {
+            col <- droplevels(as.factor(col[col != ""]))
+        }
         f.mod <- tryCatch({
             f.mod <- as.character(as.numeric(levels(col)))
         }, warning = function(war) {
@@ -64,10 +68,10 @@ analyse <- function(col,counter) {
                 # it is numeric
                 y <- as.numeric(as.matrix(col))
                 if (!isTRUE(all(y == floor(y)))) { 
-                    type <- 'numeric'
+                    type <- 'real'
                     return(type)
                 } else {
-                    type <- 'integer'
+                    type <- 'smallint'
                     return(type)
                 }
             }
