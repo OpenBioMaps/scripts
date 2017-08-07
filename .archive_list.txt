@@ -1,0 +1,17 @@
+#-------------------------------------
+#table dayof_week dayofmonth month
+#foo at every day
+#foo * * *
+#bar every Monday
+#bar 1 * *
+#casbla at every 1st day of every June
+#casbla * 1 6
+#------------------------------------
+#special tables
+#------------------------------------
+files * 28 12
+file_connect * * *
+uploadings * * *
+#project tables
+#------------------------------------
+template 3 * *
