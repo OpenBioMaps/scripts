@@ -1,5 +1,3 @@
-# archive_scripts
-
 # scripts
 useful scripts
 
