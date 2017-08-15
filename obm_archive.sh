@@ -39,11 +39,6 @@ archive_path="/home/archives"
 tables=()
 d=()
 
-# Remote 
-remote_user=''
-remote_site=''
-remote_path=''
-
 case "$1" in
 normal) echo "dumping tables"
 
@@ -136,13 +131,17 @@ echo "."
 ;;
 sync) echo "syncing to remote hosts"
     
-    pattern="$2"
+    # Remote 
+    remote_ssh=$2
+    remote_path=$3
+    pattern="$4"
+
     if [ "$pattern" = '' ]; then
         # simple copy
-        rsync -ave ssh $archive_path/ $remote_user@$remote_site:$remote_path/
+        rsync -ave ssh $archive_path/ $remote_ssh:$remote_path/
     else
         # complex pattern based copy
-        find $archive_path -name "$pattern" -print0 | tar --null --files-from=/dev/stdin -cf - | ssh $remote_user@$remote_site tar -xf - -C $remote_path
+        find $archive_path -name "$pattern" -print0 | tar --null --files-from=/dev/stdin -cf - | ssh $remote_ssh tar -xf - -C $remote_path
     fi
 
 echo "."
