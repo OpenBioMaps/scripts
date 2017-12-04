@@ -18,3 +18,6 @@ use this to setup a perodical sql dump of your important tables
 cml R script to create ALTER TABLE... SQL lines to extend an existing database table with several new columns.
 It is analysing the column contents and automatically set the proper SQL column types
 
+## import.pl export.pl
+
+cml perl tool: php language definition files import/export from/to CSV
