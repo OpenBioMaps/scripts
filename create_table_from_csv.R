@@ -39,7 +39,7 @@ analyse <- function(col,counter,na.drop=T) {
     flev <- length(levels(as.factor(col)))
     if (type == 'integer') {
         if (min(col,na.rm=T) == 0 && max(col,na.rm=T)==1) {
-            type = 'boolen'
+            type = 'boolean'
             return(type)
         } else {
             return('smallint')
@@ -47,7 +47,7 @@ analyse <- function(col,counter,na.drop=T) {
     } else if (type == 'numeric') {
         return('real')
     } else if (type == 'logical' && flev == 2 ) {
-            type = 'boolen'
+            type = 'boolean'
             return(type)
     } 
     
