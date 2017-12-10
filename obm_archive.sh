@@ -96,7 +96,7 @@ normal) echo "dumping tables"
     for k in "${tables[@]}"
     do 
         #printf "pg_dump -U gisadmin -f %s/%s_%s_%s.sql -n public -t %s %s\n" $archive_path ${d[$c]} $k $date $k ${d[$c]}
-        printf "%s -U gisadmin -f %s/%s_%s_%s.sql -n public -t %s %s" "$pg_dump" $archive_path ${d[$c]} $k $date $k ${d[$c]} | bash
+        printf "%s -h localhost -U gisadmin -f %s/%s_%s_%s.sql -n public -t %s %s" "$pg_dump" $archive_path ${d[$c]} $k $date $k ${d[$c]} | bash
         c=$((c+1))
     done
 
@@ -111,7 +111,7 @@ full) echo "dumping databases"
         fi
         echo $i
         #printf "pg_dump -U gisadmin -f %s/%s_%s.sql -n public %s\n" $archive_path $i $date $i
-        printf "%s -U gisadmin -f %s/%s_%s.sql -n public %s" "$pg_dump" $archive_path $i $date $i | bash
+        printf "%s -h localhost -U gisadmin -f %s/%s_%s.sql -n public %s" "$pg_dump" $archive_path $i $date $i | bash
     done
 
 echo "."
@@ -119,14 +119,14 @@ echo "."
 system) echo "dumping system database"
     
     #printf "pg_dump -U gisadmin -f %s/%s_%s.sql -n public %s\n" $archive_path $system_database $date $system_database
-    printf "%s -U gisadmin -f %s/%s_%s.sql -n public %s" "$pg_dump" $archive_path $system_database $date $system_database | bash
+    printf "%s -h localhost -U gisadmin -f %s/%s_%s.sql -n public %s" "$pg_dump" $archive_path $system_database $date $system_database | bash
 
 echo "."
 ;;
 projects) echo "dumping project database"
     
     #printf "pg_dump -U gisadmin -f %s/%s_%s.sql -n public %s\n" $archive_path $project_database $date $project_database
-    printf "%s -U gisadmin -f %s/%s_%s.sql -n public %s" "$pg_dump" $archive_path $project_database $date $project_database | bash
+    printf "%s -h localhost -U gisadmin -f %s/%s_%s.sql -n public %s" "$pg_dump" $archive_path $project_database $date $project_database | bash
 
 echo "."
 ;;
