@@ -36,8 +36,9 @@ special_tables=(uploadings files file_connect evaluations imports polygon_users 
 #tables=( $(cat $table_list) )
 dbs=($project_database $system_database)
 archive_path="/home/archives"
-pg_dump="pg_dump -p 5432"
-psql="psql -p 5432"
+pgport="5432"
+pg_dump="pg_dump -p $pgport"
+psql="psql"
 tables=()
 d=()
 
@@ -67,7 +68,7 @@ normal) echo "dumping tables"
                 if [[ "$crd" == "*" || "$crd" == "$day" ]]; then
                     if ! echo ${special_tables[@]} | grep -q -w "$table"; then 
                         # normal tables            
-                        mt=$(echo "SELECT array_to_string(main_table,';') as t FROM projects WHERE project_table='$table'" | "$psql" -t -h localhost -U gisadmin biomaps)
+                        mt=$(echo "SELECT array_to_string(main_table,';') as t FROM projects WHERE project_table='$table'" | psql -p $pgport -t -h localhost -U gisadmin biomaps)
                         if [ -z "$mt" ]; then
                             echo "Unknown project: $table"
                         else
