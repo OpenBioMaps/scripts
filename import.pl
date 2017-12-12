@@ -8,24 +8,35 @@ open(my $fh, '<:encoding(UTF-8)', $filename)
     or die "Could not open file '$filename' $!";
 
 print "<?php\n";
+$lc = 0;
+my $quote = '"';
+my $sep = ",";
+
+my $text = '';
+my $var = '';
+
 while (my $row = <$fh>) {
-	if($row =~ /^"(.+?)","(.+?)?",/) {
-        my $text = '';
-        my $var = $1;
-        if (defined $2) {
-            $text = $2;
-        }
-        if($var eq 'definition' and $text eq 'translation') {
-            next;
-        }
-        if ($text ne '') {
+    if ($lc == 0) {
+        $row =~ /^(["']?)definition["']?([,;\t])["']?translation["']?/;
+        $quote = $1;
+        $sep = $2;
+        $lc++;
+        next;
+    }
+    $text = "";
+    $var = "";
+    if ($row =~ /^$quote(.+?)$quote$sep$quote(.+?)?$quote$sep?/) {
+        $text = $2;
+        $var = $1;
+    }
+
+    if ($text ne '') {
             if($text =~ /^"(.+?)"$/) {
                 $text = $1;
             }
             $text =~ s/\n//g;
-            $text =~ s/'/\'/g;
-        }
-		print "define('$var','$text');\n";
-	}
+            $text =~ s/'/\\'/g;
+    }
+    print "define('$var','$text');\n";
 }
 print "?>\n";
