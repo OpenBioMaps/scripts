@@ -74,8 +74,17 @@ analyse <- function(col,cn,counter,na.drop=T) {
 
         if (!anyNA(f.mod) && length(f.mod)) {
             f <- levels(col)
-            if (all(tolower(f)==f.mod)) {
-                # it is numeric
+            #if (all(tolower(f)==f.mod)) {
+            #    # it is numeric
+            #    y <- as.numeric(as.matrix(col))
+            #    if (!isTRUE(all(y == floor(y)))) { 
+            #        type <- 'real'
+            #        return(type)
+            #    } else {
+            #        type <- 'smallint'
+            #        return(type)
+            #    }
+            #} else {
                 y <- as.numeric(as.matrix(col))
                 if (!isTRUE(all(y == floor(y)))) { 
                     type <- 'real'
@@ -84,19 +93,27 @@ analyse <- function(col,cn,counter,na.drop=T) {
                     type <- 'smallint'
                     return(type)
                 }
-            } else {
+
                 # is not numeric, might be date
-                sepchars <- gsub('[0-9]','',col)
-                if (length(sepchars)) {
-                    sepchars <- unlist(strsplit(sepchars,''))
-                    if(grep(paste('\\d+',sepchars[1],'\\d+',sep=''),col)) {
-                        type <- 'date'
-                        return(type)
+                isdate <- tryCatch({
+                    isdate <- try(as.Date(col),silent=T)
+                    if (!anyNA(isdate)){
+                         isdate <- try(as.Date(col,format='%Y.%m.%d',silent=T))
                     }
+                }, warning = function(w) {
+                    return(NA)
+                }, error = function(e){
+                    return(NA)
+                })
+
+                if (!anyNA(isdate) && class(isdate)=='Date') {
+                    type <- 'date'
+                    return(type)
                 }
+
                 print(paste('Unrecognized factor column: ',cn,sep=''))
                 return('text')
-            }
+            #}
         } else {
             if ( flev == 2 && nchar(levels(as.factor(col))[1])<12 ) {
                 print(paste('Probably logical type: ',cn,' (',levels(as.factor(col)),')',sep=''))
@@ -118,6 +135,9 @@ analyse <- function(col,cn,counter,na.drop=T) {
                 # might be date
                 isdate <- tryCatch({
                     isdate <- try(as.Date(col),silent=T)
+                    if (!anyNA(isdate)){
+                         isdate <- try(as.Date(col,format='%Y.%m.%d',silent=T))
+                    }
                 }, warning = function(w) {
                     return(NA)
                 }, error = function(e){
