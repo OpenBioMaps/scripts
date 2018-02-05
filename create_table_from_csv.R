@@ -17,11 +17,13 @@ if (length(args)==0) {
     csv.sep <- ','
     csv.quote <- '"'
     create_table <- F
+    prefix <- ""
 } else if (length(args)>1) {
     csv.file <- args[1]
     csv.sep <- ','
     csv.quote <- '"'
     create_table <- F
+    prefix <- ""
 
     for (i in 1:length(args)) {
         if (args[i]=='-f' || args[i]=='--file') {
@@ -33,13 +35,16 @@ if (length(args)==0) {
         else if (args[i]=='-q' || args[i]=='--quote') {
             csv.quote <- args[i+1]
         }
-        else if (args[i]=='-c' || args[i]=='--create-table') {
+        else if (args[i]=='-ct' || args[i]=='--create-table') {
             create_table <- T
+        }
+        else if (args[i]=='-p' || args[i]=='--prefix') {
+            prefix <- args[i+1]
         }
     }
 }
 
-analyse <- function(col,counter,na.drop=T) {
+analyse <- function(col,cn,counter,na.drop=T) {
     type <- class( col )
     flev <- length(levels(as.factor(col)))
     if (type == 'integer') {
@@ -79,13 +84,24 @@ analyse <- function(col,counter,na.drop=T) {
                     type <- 'smallint'
                     return(type)
                 }
+            } else {
+                # is not numeric, might be date
+                sepchars <- gsub('[0-9]','',col)
+                if (length(sepchars)) {
+                    sepchars <- unlist(strsplit(sepchars,''))
+                    if(grep(paste('\\d+',sepchars[1],'\\d+',sep=''),col)) {
+                        type <- 'date'
+                        return(type)
+                    }
+                }
+                print(paste('Unrecognized factor column: ',cn,sep=''))
+                return('text')
             }
         } else {
-            if ( flev == 2 ) {
-                print(paste('Probably logical type at',i))
-                print(levels(as.factor(col)))
+            if ( flev == 2 && nchar(levels(as.factor(col))[1])<12 ) {
+                print(paste('Probably logical type: ',cn,' (',levels(as.factor(col)),')',sep=''))
             } else if (flev == 0) {
-                print(paste('Empty column at',i))
+                print(paste('Empty/unknown column: ',cn,sep=''))
                 type <- 'text'
                 return(type)
             } 
@@ -99,6 +115,19 @@ analyse <- function(col,counter,na.drop=T) {
             })
 
             if (col.length<255) {
+                # might be date
+                isdate <- tryCatch({
+                    isdate <- try(as.Date(col),silent=T)
+                }, warning = function(w) {
+                    return(NA)
+                }, error = function(e){
+                    return(NA)
+                })
+
+                if (!anyNA(isdate) && class(isdate)=='Date') {
+                    type <- 'date'
+                    return(type)
+                }
                 type <- paste('character varying(',col.length,')',sep='')
                 return(type)
             } else {
@@ -114,6 +143,14 @@ analyse <- function(col,counter,na.drop=T) {
 
 # RUN
 output_file <- gsub('\\.csv$','',csv.file)
+if (prefix != '') {
+    db <- prefix
+    dbtable <- paste(prefix,output_file,sep='_')
+} else {
+    dbtable <- output_file
+    db <- output_file
+}
+
 cat ("",file=paste(output_file,".sql",sep=''))
 
 if (create_table) {
@@ -131,7 +168,7 @@ SET search_path = public, pg_catalog;
 SET default_tablespace = '';
 SET default_with_oids = false;\n\n",sep=''),file=paste(output_file,".sql",sep=''),append=T)
 
-    cat(paste('CREATE TABLE ',tolower(output_file),"(\n",sep=""),file=paste(output_file,".sql",sep=''),append=T)
+    cat(paste('CREATE TABLE ',tolower(dbtable),"(\n",sep=""),file=paste(output_file,".sql",sep=''),append=T)
 
     cat(paste("    obm_id integer NOT NULL,
     obm_geometry geometry,
@@ -147,70 +184,70 @@ SET default_with_oids = false;\n\n",sep=''),file=paste(output_file,".sql",sep=''
 
 
     cat(paste("
-ALTER TABLE ",tolower(output_file)," OWNER TO gisadmin;
+ALTER TABLE ",tolower(dbtable)," OWNER TO gisadmin;
 
 --
--- Name: TABLE ",tolower(output_file),"; Type: COMMENT; Schema: public; Owner: gisadmin
+-- Name: TABLE ",tolower(dbtable),"; Type: COMMENT; Schema: public; Owner: gisadmin
 --
 
-COMMENT ON TABLE ",tolower(output_file)," IS 'user defined table:",Sys.info()['login'],"';
+COMMENT ON TABLE ",tolower(dbtable)," IS 'user defined table:",Sys.info()['login'],"';
 
 --
--- Name: ",tolower(output_file),"_obm_id_seq; Type: SEQUENCE; Schema: public; Owner: gisadmin
+-- Name: ",tolower(dbtable),"_obm_id_seq; Type: SEQUENCE; Schema: public; Owner: gisadmin
 --
 
-CREATE SEQUENCE ",tolower(output_file),"_obm_id_seq
+CREATE SEQUENCE ",tolower(dbtable),"_obm_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
     NO MAXVALUE
     CACHE 1;
 
-ALTER TABLE ",tolower(output_file),"_obm_id_seq OWNER TO gisadmin;
+ALTER TABLE ",tolower(dbtable),"_obm_id_seq OWNER TO gisadmin;
 
 --
--- Name: ",tolower(output_file),"_obm_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: gisadmin
+-- Name: ",tolower(dbtable),"_obm_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: gisadmin
 --
 
-ALTER SEQUENCE ",tolower(output_file),"_obm_id_seq OWNED BY ",tolower(output_file),".obm_id;
+ALTER SEQUENCE ",tolower(dbtable),"_obm_id_seq OWNED BY ",tolower(dbtable),".obm_id;
 
 --
 -- Name: obm_id; Type: DEFAULT; Schema: public; Owner: gisadmin
 --
 
-ALTER TABLE ONLY ",tolower(output_file)," ALTER COLUMN obm_id SET DEFAULT nextval('",tolower(output_file),"_obm_id_seq'::regclass);
+ALTER TABLE ONLY ",tolower(dbtable)," ALTER COLUMN obm_id SET DEFAULT nextval('",tolower(dbtable),"_obm_id_seq'::regclass);
 
 --
--- Name: ",tolower(output_file),"_pkey; Type: CONSTRAINT; Schema: public; Owner: gisadmin; Tablespace: 
+-- Name: ",tolower(dbtable),"_pkey; Type: CONSTRAINT; Schema: public; Owner: gisadmin; Tablespace: 
 --
 
-ALTER TABLE ONLY ",tolower(output_file),"
-    ADD CONSTRAINT ",tolower(output_file),"_pkey PRIMARY KEY (obm_id);
+ALTER TABLE ONLY ",tolower(dbtable),"
+    ADD CONSTRAINT ",tolower(dbtable),"_pkey PRIMARY KEY (obm_id);
 
 --
 -- Name: obm_uploading_id; Type: FK CONSTRAINT; Schema: public; Owner: gisadmin
 --
 
-ALTER TABLE ONLY ",tolower(output_file),"
+ALTER TABLE ONLY ",tolower(dbtable),"
     ADD CONSTRAINT obm_uploading_id FOREIGN KEY (obm_uploading_id) REFERENCES uploadings(id);
 
 --
--- Name: ",tolower(output_file),"; Type: ACL; Schema: public; Owner: gisadmin
+-- Name: ",tolower(dbtable),"; Type: ACL; Schema: public; Owner: gisadmin
 --
 
-REVOKE ALL ON TABLE ",tolower(output_file)," FROM PUBLIC;
-REVOKE ALL ON TABLE ",tolower(output_file)," FROM gisadmin;
-GRANT ALL ON TABLE ",tolower(output_file)," TO gisadmin;
-GRANT ALL ON TABLE ",tolower(output_file)," TO ",tolower(output_file),"_admin;
+REVOKE ALL ON TABLE ",tolower(dbtable)," FROM PUBLIC;
+REVOKE ALL ON TABLE ",tolower(dbtable)," FROM gisadmin;
+GRANT ALL ON TABLE ",tolower(dbtable)," TO gisadmin;
+GRANT ALL ON TABLE ",tolower(dbtable)," TO ",tolower(db),"_admin;
 
 --
--- Name: ",tolower(output_file),"_obm_id_seq; Type: ACL; Schema: public; Owner: gisadmin
+-- Name: ",tolower(dbtable),"_obm_id_seq; Type: ACL; Schema: public; Owner: gisadmin
 --
 
-REVOKE ALL ON SEQUENCE ",tolower(output_file),"_obm_id_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE ",tolower(output_file),"_obm_id_seq FROM gisadmin;
-GRANT ALL ON SEQUENCE ",tolower(output_file),"_obm_id_seq TO gisadmin;
-GRANT SELECT,USAGE ON SEQUENCE ",tolower(output_file),"_obm_id_seq TO ",tolower(output_file),"_admin;
+REVOKE ALL ON SEQUENCE ",tolower(dbtable),"_obm_id_seq FROM PUBLIC;
+REVOKE ALL ON SEQUENCE ",tolower(dbtable),"_obm_id_seq FROM gisadmin;
+GRANT ALL ON SEQUENCE ",tolower(dbtable),"_obm_id_seq TO gisadmin;
+GRANT SELECT,USAGE ON SEQUENCE ",tolower(dbtable),"_obm_id_seq TO ",tolower(db),"_admin;
 
 --
 -- OBM add processed columns
@@ -225,10 +262,10 @@ csv.sqlnames <- NULL
 csv.names <- colnames(csv.data)
 for (i in 1:ncol(csv.data)) {
     #csv.coltypes <- append(csv.coltypes,analyse( csv.data[,i],i ))
-    sqltype <- analyse( csv.data[,i],i )
+    sqltype <- analyse( csv.data[,i],csv.names[i],i )
     name <- tolower(gsub("[^A-Za-z0-9]","_",csv.names[i]))
     csv.sqlnames <- append(csv.sqlnames,name)
-    cat(paste('ALTER TABLE ',tolower(output_file),' ADD COLUMN ','"',name,'"',' ',sqltype,";\n",sep=""),file=paste(output_file,".sql",sep=''),append=T)
+    cat(paste('ALTER TABLE ',tolower(dbtable),' ADD COLUMN ','"',name,'"',' ',sqltype,";\n",sep=""),file=paste(output_file,".sql",sep=''),append=T)
 }
 
 if (length(unique(csv.sqlnames)) < length(csv.sqlnames)) {
