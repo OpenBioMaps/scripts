@@ -21,3 +21,7 @@ It is analysing the column contents and automatically set the proper SQL column 
 ## import.pl export.pl
 
 cml perl tool: php language definition files import/export from/to CSV
+
+## obm_git_sync_to_obm_server.sh
+
+bash script including rsync commands to update obm server from local repository. E.g. from git to server after some local test of new commits.
