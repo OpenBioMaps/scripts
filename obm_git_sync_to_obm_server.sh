@@ -1,11 +1,15 @@
 #!/bin/bash
 # GIT source sync to Production server
 # Miki, Bán
-# 2017.03.05
+# 2018.10.01
 
-server="banm@openbiomaps.org"
 server_path="/var/www/html/biomaps"
-git_folder="/var/www/html/biomaps"
+
+if [ $# -eq 0 ]; then
+    echo "No arguments supplied"
+    exit
+fi
+server=$1
 
 cd $server_path
 
@@ -46,6 +50,18 @@ rsync -tve ssh $folder/*.map  $server:$server_path/$folder/
 folder="templates/initial/public"
 echo $folder
 rsync -tve ssh $folder/*.map  $server:$server_path/$folder/
+
+folder="templates/initial/includes"
+echo $folder
+rsync -ave ssh $folder/*.php  $server:$server_path/$folder/
+
+folder="templates/initial/shiny"
+echo $folder
+rsync -ave ssh $folder/*.R  $server:$server_path/$folder/
+
+folder="templates/initial/images"
+echo $folder
+rsync -ave ssh $folder/*.{png,jpg,svg}  $server:$server_path/$folder/
 
 folder="oauth"
 echo $folder
