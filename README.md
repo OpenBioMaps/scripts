@@ -45,3 +45,5 @@ The resulting csv files will be in the output folder, one file for each upload f
 ## obm_backup_process
 
 bash & php scripts to process obm-mobile-app backup files. It is listing / summarize backup contents
+
+Usage: ./obm_backup_process.sh backup_file
