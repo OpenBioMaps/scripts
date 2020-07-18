@@ -41,3 +41,7 @@ Requires python 3.7
 Edit the settings.py file with your server url and project name.
  
 The resulting csv files will be in the output folder, one file for each upload form.
+
+## obm_backup_process
+
+bash & php scripts to process obm-mobile-app backup files. It is listing / summarize backup contents
