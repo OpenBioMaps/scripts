@@ -6,6 +6,8 @@ i=$1
 # ezt php-ban sikerült jól megoldani....
 php ./obm_backup_process.php $i
 
+a=$i.json
+
 # List of servers:
 servers=`jq '.servers.data[] | select(.id!="").id' $a | tr -d '"'`
 
