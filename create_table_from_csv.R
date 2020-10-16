@@ -5,7 +5,7 @@
 #
 # Usage:
 # Rscript --vanilla create_table_from_csv.R foo.csv
-# ./create_table_from_csv.R --file foo.csv [--sep , --quote \' --create-table --project ... --table ... ]
+# ./create_table_from_csv.R --file foo.csv [--sep , --quote \' --create-table --project ... --table ... --owner ... ]
 # Default for quote is "
 # Default for sep is ,
 # Default for create-table is FALSE. If TRUE, SQL output will be CREATE TABLE... instead of ALTER TABLE... 
@@ -20,6 +20,7 @@ csv.quote <- '"'
 create_table <- F
 project <- ""
 table_name <- ""
+owner <- "gisadmin"
 
 getExtension <- function(file){ 
     ex <- strsplit(basename(file), split="\\.")[[1]]
@@ -238,7 +239,7 @@ SET default_with_oids = false;\n\n",sep=''),file=output_file,append=T)
 
 
     cat(paste("
-ALTER TABLE ",dbtable," OWNER TO gisadmin;
+ALTER TABLE ",dbtable," OWNER TO ",owner,";
 
 --
 -- Name: TABLE ",dbtable,"; Type: COMMENT; Schema: public; Owner: gisadmin
@@ -257,7 +258,7 @@ CREATE SEQUENCE ",dbtable,"_obm_id_seq
     NO MAXVALUE
     CACHE 1;
 
-ALTER TABLE ",dbtable,"_obm_id_seq OWNER TO gisadmin;
+ALTER TABLE ",dbtable,"_obm_id_seq OWNER TO ",owner,";
 
 --
 -- Name: ",dbtable,"_obm_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: gisadmin
@@ -290,8 +291,8 @@ ALTER TABLE ONLY ",dbtable,"
 --
 
 REVOKE ALL ON TABLE ",dbtable," FROM PUBLIC;
-REVOKE ALL ON TABLE ",dbtable," FROM gisadmin;
-GRANT ALL ON TABLE ",dbtable," TO gisadmin;
+REVOKE ALL ON TABLE ",dbtable," FROM ",owner,";
+GRANT ALL ON TABLE ",dbtable," TO ",owner,";
 GRANT ALL ON TABLE ",dbtable," TO ",tolower(db),"_admin;
 
 --
@@ -299,8 +300,8 @@ GRANT ALL ON TABLE ",dbtable," TO ",tolower(db),"_admin;
 --
 
 REVOKE ALL ON SEQUENCE ",dbtable,"_obm_id_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE ",dbtable,"_obm_id_seq FROM gisadmin;
-GRANT ALL ON SEQUENCE ",dbtable,"_obm_id_seq TO gisadmin;
+REVOKE ALL ON SEQUENCE ",dbtable,"_obm_id_seq FROM ",owner,";
+GRANT ALL ON SEQUENCE ",dbtable,"_obm_id_seq TO ",owner,";
 GRANT SELECT,USAGE ON SEQUENCE ",dbtable,"_obm_id_seq TO ",tolower(db),"_admin;
 
 --
