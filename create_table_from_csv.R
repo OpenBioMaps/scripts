@@ -31,7 +31,7 @@ getExtension <- function(file){
 if (length(args)==0) {
     cat(paste("
 Usage:
-./create_table_from_csv.R --file foo.csv [--sep , --quote \\' --create-table --project ... --table ... ]
+./create_table_from_csv.R --file foo.csv [--sep , --quote \\' --create-table --project ... --table ... --owner ...]
 
 Default for quote is \"
 Default for sep is ,
@@ -72,6 +72,9 @@ Default table is the basename of the csv file.
         }
         else if (args[i]=='-t' || args[i]=='--table') {
             table_name <- args[i+1]
+        }
+        else if (args[i]=='-t' || args[i]=='--owner') {
+            owner <- args[i+1]
         }
     }
 
@@ -223,7 +226,7 @@ SET search_path = public, pg_catalog;
 SET default_tablespace = '';
 SET default_with_oids = false;\n\n",sep=''),file=output_file,append=T)
 
-    cat(paste('CREATE TABLE ',dbtable,"(\n",sep=""),file=output_file,append=T)
+    cat(paste('CREATE TABLE ',dbtable," (\n",sep=""),file=output_file,append=T)
 
     cat(paste("    obm_id integer NOT NULL,
     obm_geometry geometry,
