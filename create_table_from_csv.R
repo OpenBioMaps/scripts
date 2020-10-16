@@ -73,7 +73,7 @@ Default table is the basename of the csv file.
         else if (args[i]=='-t' || args[i]=='--table') {
             table_name <- args[i+1]
         }
-        else if (args[i]=='-t' || args[i]=='--owner') {
+        else if (args[i]=='-o' || args[i]=='--owner') {
             owner <- args[i+1]
         }
     }
