@@ -287,7 +287,7 @@ ALTER TABLE ONLY ",dbtable,"
 --
 
 ALTER TABLE ONLY ",dbtable,"
-    ADD CONSTRAINT obm_uploading_id FOREIGN KEY (obm_uploading_id) REFERENCES uploadings(id);
+    ADD CONSTRAINT obm_uploading_id FOREIGN KEY (obm_uploading_id) REFERENCES system.uploadings(id);
 
 --
 -- Name: ",dbtable,"; Type: ACL; Schema: public; Owner: gisadmin
