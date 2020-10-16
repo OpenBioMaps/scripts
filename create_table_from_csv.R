@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 # OpenBioMaps 
 # an R script for creating SQL commands based on csv columns
-# by Miki Bán, 2017 01 21, 2019.09.29
+# by Miki Bán, 2017 01 21, 2019.09.29, 2020.10.16
 #
 # Usage:
 # Rscript --vanilla create_table_from_csv.R foo.csv
@@ -195,6 +195,39 @@ analyse <- function(col,cn,counter,na.drop=T) {
             }
         }
     }
+    else if (type == 'character') {
+        col.length <- tryCatch({
+            col.length <- max(sapply(as.character(col),nchar),na.rm=T)
+        }, error = function(err) {
+            print(paste('STRING conversion error: ',err))
+            return(256)
+
+        })
+        if (col.length<255) {
+            # might be date
+            isdate <- tryCatch({
+                isdate <- try(as.Date(col),silent=T)
+                if (!anyNA(isdate)){
+                     isdate <- try(as.Date(col,format='%Y.%m.%d',silent=T))
+                }
+            }, warning = function(w) {
+                return(NA)
+            }, error = function(e){
+                return(NA)
+            })
+
+            if (!anyNA(isdate) && class(isdate)=='Date') {
+                type <- 'date'
+                return(type)
+            }
+            type <- paste('character varying(',col.length,')',sep='')
+            return(type)
+        } else {
+            type <- 'text'
+            return(type)
+        }
+    }
+
     return(type)
 }
 
@@ -335,4 +368,3 @@ if (length(unique(csv.sqlnames)) < length(csv.sqlnames)) {
     cat("\nWARNING! Non unique column names!")
     csv.sqlnames[duplicated(csv.sqlnames)]
 }
-
