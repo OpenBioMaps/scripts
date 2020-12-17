@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 # OpenBioMaps 
 # an R script for creating SQL commands based on csv columns
-# by Miki Bán, 2017 01 21, 2019.09.29, 2020.10.16
+# by Miki Bán, 2017 01 21, 2019.09.29, 2020.10.16, 2020.12.17
 #
 # Usage:
 # Rscript --vanilla create_table_from_csv.R foo.csv
@@ -86,12 +86,26 @@ Default table is the basename of the csv file.
 analyse <- function(col,cn,counter,na.drop=T) {
     type <- class( col )
     flev <- length(levels(as.factor(col)))
+    
+
+    if (type == 'character') {
+        t <- show_condition(as.numeric(col))
+        if (t != 'warning' && t != 'error ') {
+            col <- t
+            type <- class( col )
+        }
+    }
+
     if (type == 'integer') {
         if (min(col,na.rm=T) == 0 && max(col,na.rm=T)==1) {
             type = 'boolean'
             return(type)
         } else {
-            return('smallint')
+            if (max(col,na.rm=T)>32768) {
+                return('integer')
+            } else {
+                return('smallint')
+            }
         }
     } else if (type == 'numeric') {
         return('real')
@@ -231,6 +245,13 @@ analyse <- function(col,cn,counter,na.drop=T) {
     return(type)
 }
 
+show_condition <- function(code) {
+  tryCatch(code,
+    error = function(c) "error",
+    warning = function(c) "warning",
+    message = function(c) "message"
+  )
+}
 
 
 # RUN
