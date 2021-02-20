@@ -32,15 +32,21 @@ done
 #jq '.servers.data[] | select(.id=="'$url'") | .databases.data[] | select(.name=="'$name'") | .observations.data | map(has("measurements"))' $a
 
 # forms width data
-forms=`jq '.servers.data[] | select(.id=="'$url'") | .databases.data[] | select(.name=="'$name'") | .observations.data | map(has("measurements"))' $a | grep -n true | awk -F : '{print $1-2}'`
+e="jq '.servers.data[] | select(.id==\"$url\") | .databases.data[] | select(.name==\"$name\") | .observations.data | map(has(\"measurements\"))' $a"
+
+forms=`echo $e | bash |  grep -n true | awk -F : '{print $1-2}'`
 
 for f in $forms
 do
-    formId=`jq '.servers.data[] | select(.id=="'$url'") | .databases.data[] | select(.name=="'$name'") | .observations.data['$f'].id' $a | tr -d '"'`
-    records=`jq '.servers.data[] | select(.id=="'$url'") | .databases.data[] | select(.name=="'$name'") | .observations.data['$f'].measurements.data[] | select(.isSynced==false) | length' $a | wc -l`
+    e="jq '.servers.data[] | select(.id==\"$url\") | .databases.data[] | select(.name==\"$name\") | .observations.data['$f'].id' $a | tr -d '\"'"
+    formId=`echo $e | bash`
+
+    e="jq '.servers.data[] | select(.id==\"$url\") | .databases.data[] | select(.name==\"$name\") | .observations.data['$f'].measurements.data[] | select(.isSynced==false) | length' $a | wc -l"
+    records=`echo $e | bash`
     #select(.isSynced=="false")
     echo "$records non-synced records found in form $formId"
-    jq '.servers.data[] | select(.id=="'$url'") | .databases.data[] | select(.name=="'$name'") | .observations.data['$f'].measurements.data[] | select(.isSynced==false)' $a > $formId"_data.json"
+    e="jq '.servers.data[] | select(.id==\"$url\") | .databases.data[] | select(.name==\"$name\") | .observations.data['$f'].measurements.data[] | select(.isSynced==false)' $a > $formId"_data.json
+    echo $e | bash
 
     #minden adat
     #jq '.servers.data[] | select(.id=="'$url'") | .databases.data[] | select(.name=="'$name'") | .observations.data['$f'].measurements.data' $a > $formId"_data.json"
