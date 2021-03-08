@@ -1,3 +1,4 @@
+#!./venv/bin/python
 import pandas as pd
 import json
 import sys
@@ -6,6 +7,8 @@ from settings import SERVER_URL, PROJECT
 
 
 def geom_to_wkt(row):
+    if row is None:
+        return None
     lat = row['obm_geometry']['latitude']
     lng = row['obm_geometry']['longitude']
     row['obm_geometry'] = 'POINT(' + str(lng) + ' ' + str(lat) + ')'
@@ -43,6 +46,7 @@ def main(filename):
                 df.to_csv('output/' + bn + '_' + po['id']
                           + '.csv', index=False)
 
+                print(bn + ': ' + str(df.shape[0]))
 
 if __name__ == '__main__':
     try:
