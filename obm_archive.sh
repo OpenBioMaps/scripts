@@ -1,10 +1,10 @@
 #!/bin/bash
 
-#OpenBioMaps archive script by Miki Bán banm@vocs.unideb.hu
-#2016-10-31, 12.28
-#feel free to upgrade it!
-#please share your improvements:
-#administrator@openbiomaps.org
+# OpenBioMaps archive script by Miklós Bán <banm@vocs.unideb.hu>
+# 2016-10-31, 12.28, 2018.03.02, 2018.09.29
+# feel free to upgrade it!
+# please share your improvements:
+# administrator@openbiomaps.org
 
 # crontab usage examples:
 # only tables from Monday to Saturday
@@ -12,14 +12,7 @@
 # tables and whole databases on every Sunday
 #15 04 * * 7 /home/banm/archive.sh full &
 
-# Variables - set them as you need
-date=`date +"%b-%d-%y_%H:%M"`
-# cron like archive sttings
-doweek=`date +"%-d"`
-month=`date +"%-m"`
-day=`date +"%-u"`
-# path of table list
-table_list="${HOME}/.archive_list.txt"
+# Example settings in 
 #table dayof_week dayofmonth month
 #foo at every day
 #foo * * *
@@ -28,19 +21,24 @@ table_list="${HOME}/.archive_list.txt"
 #casbla at every 1st day of every June
 #casbla * 1 6
 
+# Variables - set them as you need
+date=`date +"%b-%d-%y_%H:%M"`
+# cron like archive sttings
+doweek=`date +"%-d"`
+month=`date +"%-m"`
+day=`date +"%-u"`
 
-# tables in gisdata
-project_database="gisdata"
-system_database="biomaps"
-special_tables=(uploadings files file_connect evaluations imports polygon_users shared_polygons query_buff)
+special_tables=(evaluations file_connect files imports polygon_users query_buff shared_polygons uploadings)
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
+
+source $DIR/obm_archive_settings.sh
+
 #tables=( $(cat $table_list) )
 dbs=($project_database $system_database)
-archive_path="/home/archives"
-pgport="5432"
-pg_dump="pg_dump -p $pgport"
-psql="psql"
 tables=()
 d=()
+schema=()
 
 case "$1" in
 normal) echo "dumping tables"
@@ -67,8 +65,8 @@ normal) echo "dumping tables"
             if [[ "$crw" == "*" || "$crw" == "$doweek" ]]; then
                 if [[ "$crd" == "*" || "$crd" == "$day" ]]; then
                     if ! echo ${special_tables[@]} | grep -q -w "$table"; then 
-                        # normal tables            
-                        mt=$(echo "SELECT array_to_string(main_table,';') as t FROM projects WHERE project_table='$table'" | psql -p $pgport -t -h localhost -U gisadmin biomaps)
+                        # normal tables
+                        mt=$(echo "SELECT f_main_table as t FROM projects LEFT JOIN header_names ON (f_table_name=project_table) WHERE project_table='$table'" | $psql -t -h localhost -U $admin_user $system_database)
                         if [ -z "$mt" ]; then
                             echo "Unknown project: $table"
                         else
@@ -77,14 +75,17 @@ normal) echo "dumping tables"
                             for mk in "${main_tables[@]}"
                             do
                                 d+=( "$database" )
+                                schema+=( "public" )
                             done
                             # automatically add history and taxon tables
                             # probably some customization would be nice
+                            schema+=( "public" "public" )
                             tables+=( `printf "%s_history %s_taxon" $table $table` )
                             d+=( `printf "%s %s" $database $database` )
                         fi
                     else
                         # special tables
+                        schema+=( "system" )
                         tables+=( "$table" )
                         d+=( "$database" )
                     fi
@@ -95,10 +96,9 @@ normal) echo "dumping tables"
 
     #run
     c=0
-    for k in "${tables[@]}"
+    for table in "${tables[@]}"
     do 
-        #printf "pg_dump -U gisadmin -f %s/%s_%s_%s.sql -n public -t %s %s\n" $archive_path ${d[$c]} $k $date $k ${d[$c]}
-        printf "%s -h localhost -U gisadmin -f %s/%s_%s_%s.sql -n public -t %s %s" "$pg_dump" $archive_path ${d[$c]} $k $date $k ${d[$c]} | bash
+        printf "%s -h localhost -U %s -t ${schema[$c]}.%s %s | gzip > %s/%s_%s_%s.sql.gz\n" "$pg_dump" $admin_user $table ${d[$c]} $archive_path ${d[$c]} $table $date | bash
         c=$((c+1))
     done
 
@@ -106,14 +106,14 @@ echo "."
 ;;
 full) echo "dumping databases"
     
-    for i in "${dbs[@]}"
+    for db in "${dbs[@]}"
     do 
-        if [ $# -eq 2 ] && [ $i != $2 ]; then 
+        if [ $# -eq 2 ] && [ $db != $2 ]; then 
             continue
         fi
-        echo $i
-        #printf "pg_dump -U gisadmin -f %s/%s_%s.sql -n public %s\n" $archive_path $i $date $i
-        printf "%s -h localhost -U gisadmin -f %s/%s_%s.sql -n public %s" "$pg_dump" $archive_path $i $date $i | bash
+        echo $db
+        # extension is bzip2 to prevent auto cleaning and auto sync
+        printf "%s -h localhost -U %s -n public %s | bzip2 > %s/%s_%s.sql.bzip2" "$pg_dump" $admin_user $db $archive_path $db $date | bash
     done
 
 echo "."
@@ -121,50 +121,55 @@ echo "."
 system) echo "dumping system database"
     
     #printf "pg_dump -U gisadmin -f %s/%s_%s.sql -n public %s\n" $archive_path $system_database $date $system_database
-    printf "%s -h localhost -U gisadmin -f %s/%s_%s.sql -n public %s" "$pg_dump" $archive_path $system_database $date $system_database | bash
+    printf "%s -h localhost -U %s -n public %s | gzip > %s/%s_%s.sql.gz" "$pg_dump" $admin_user $system_database $archive_path $system_database $date | bash
 
 echo "."
 ;;
 projects) echo "dumping project database"
     
     #printf "pg_dump -U gisadmin -f %s/%s_%s.sql -n public %s\n" $archive_path $project_database $date $project_database
-    printf "%s -h localhost -U gisadmin -f %s/%s_%s.sql -n public %s" "$pg_dump" $archive_path $project_database $date $project_database | bash
+    printf "%s -h localhost -U %s -n public %s | gzip > %s/%s_%s.sql.gz" "$pg_dump" $admin_user $project_database $archive_path $project_database $date | bash
 
 echo "."
 ;;
 sync) echo "syncing to remote hosts"
+
+    # example
+    #obm_archive.sh sync banm@dinpi.openbiomaps.org /home/archives/openbiomaps.org_archive
     
     # Remote 
     remote_ssh=$2
     remote_path=$3
     pattern="$4"
 
-    if [ "$pattern" = '' ]; then
-        # simple copy
-        rsync -ave ssh $archive_path/ $remote_ssh:$remote_path/
+    if [ "$pattern" == '' ]; then
+        # copy all files which newer than 3 days
+        cd $archive_path
+        rsync -Ravh --files-from=<(find ./ -mtime -3 -type f) . $remote_ssh:$remote_path
     else
-        # complex pattern based copy
-        find $archive_path -name "$pattern" -print0 | tar --null --files-from=/dev/stdin -cf - | ssh $remote_ssh tar -xf - -C $remote_path
+        # copy pattern match files
+        find $archive_path/ -name '$pattern' -type f -mtime -3 -print0 | tar --null --files-from=/dev/stdin -cf - | ssh $remote_ssh tar -xf - -C $remote_path/
     fi
 
 echo "."
 ;;
 clean) echo "cleaning: gzipping sql files and deleting old gzip files"
     
-    # run it every month
-    n1=7
-    n2=30
-    if [[ ! -z "$2" && -z "$3" ]]; then
-        n1="$2"
-    elif [ ! -z "$3" ]; then
-        n1="$2"
-        n2="$3"
+    # run it every day
+    keep_days=15
+    if [ ! -z "$2" ]; then
+        keep_days="$2"
     fi
-    # gzipping everything older than 7 days
-    printf "find %s -type f -name '*.sql' -mtime +$n1 -print -exec gzip {} \;" $archive_path | bash
-    # delete every gzip file older than 30 days
-    # how can I keep 1/month?
-    printf "find %s -type f -name '*.sql.gz' -mtime +$n2 -print -exec rm {} \;" $archive_path | bash
+    # gzipping non-gzipped sql files
+    printf "find %s -type f -name '*.sql' -print -exec gzip {} \;" $archive_path | bash
+    # delete every gzip file older than keep_days
+    printf "find %s -type f -name '*.sql.gz' -mtime +$keep_days -print -exec rm {} \;" $archive_path | bash
+    # delete old full archives
+    printf "find %s -type f -name '*.sql.bzip2' -mtime +365 -print -exec rm {} \;" $archive_path | bash
+
+    # clean logs
+    echo "DELETE FROM oauth_access_tokens WHERE expires < now();" | $psql -t -h localhost -U $admin_user $system_database
+    echo "DELETE FROM oauth_refresh_tokens WHERE expires < now();" | $psql -t -h localhost -U $admin_user $system_database
 
 echo "."
 ;;
