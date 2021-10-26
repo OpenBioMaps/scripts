@@ -1,5 +1,5 @@
 # scripts
-useful scripts
+Useful scripts for OBM development and management
 
 ## findre.pl
 
@@ -47,3 +47,7 @@ The resulting csv files will be in the output folder, one file for each upload f
 bash & php scripts to process obm-mobile-app backup files. It is listing / summarize backup contents
 
 Usage: ./obm_backup_process.sh backup_file
+
+## tracklog process
+
+tracklog export processing for upload
