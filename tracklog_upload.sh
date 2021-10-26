@@ -27,4 +27,5 @@ do
 
 done
 
-# psql -h knp.openbiomaps.org -d gisdata -U biomapsadmin < LIFEHUNVIPHABKNPI_herplist_2021-07-27-071415-084813.sql
+# psql -h knp.openbiomaps.org -d __gisdata__ -U __admin___ < ....sql
+

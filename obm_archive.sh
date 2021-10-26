@@ -153,6 +153,24 @@ sync) echo "syncing to remote hosts"
 
 echo "."
 ;;
+curl-sync) echo "syncing to remote hosts using curl"
+
+    # example
+    #obm_archive.sh sync banm@dinpi.openbiomaps.org /home/archives/openbiomaps.org_archive
+    
+    # Remote 
+    remote_user=$2
+    remote_path=$3
+
+    # copy all files which newer than 3 days
+    cd $archive_path
+    find ./ -mtime -3 -type f | while read fname; do
+        bname=`basename "$fname"`
+        curl -X PUT -u $remote_user "$remote_path/$bname" --data-binary @"$fname"
+    done    
+
+echo "."
+;;
 clean) echo "cleaning: gzipping sql files and deleting old gzip files"
     
     # run it every day
