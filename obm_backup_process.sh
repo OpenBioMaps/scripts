@@ -84,8 +84,21 @@ do
         echo $e | bash
     fi
 
-    php ./obm_backup_process.php $formId "$formId"_data.json
     
+
+    # Creating valid JSON
+    sed -i -e 's/}$/},/' $formId"_data.json"
+    #sed -i '0,/{/s//[{/' $formId"_data.json"
+    sed -i '$ s/.$//' $formId"_data.json" # remove last character (,)
+    
+    echo [$(cat $formId"_data.json")] > $formId"_data.json"
+
+    # Processing each line of files: pretty print for uploading... not ready
+    php ./obm_backup_process.php $formId "$formId"_data.json
+
+    # Converting json to csv?
+    # https://www.convertcsv.com/json-to-csv.htm
+
     #header=`jq -r '.data | del(.obm_geometry) |  del(.obm_files_id) | keys_unsorted | . +=["longitude","latitude"]| @csv' $formId"_data.json"`
     #jq -r '.data |del(.obm_geometry) |  del(.obm_files_id) | keys_unsorted | . +=["longitude","latitude"]| @csv' $formId"_data.json" 2> header.csv
     #jq -r '.data |= . + {longitude:.obm_geometry.longitude,latitude:.obm_geometry.latitude} | .data | del(.obm_geometry) |  del(.obm_files_id) | [.[]] | @csv' $formId"_data.json" > data.csv
