@@ -1,0 +1,11 @@
+CRON
+
+0 4,16 * * * /srv/docker/openbiomaps/obm-composer/auto_update.sh > /srv/docker/openbiomaps/obm-composer/system_update_job.log 2>&1
+
+
+auto_update.sh
+
+cd /srv/docker/openbiomaps/obm-composer
+/usr/local/bin/docker-compose pull
+/usr/local/bin/docker-compose up -d
+docker image prune -f
