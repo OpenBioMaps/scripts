@@ -1,0 +1,45 @@
+# SHELL SCRIPT
+# target project
+project=kurgan
+
+# target table
+table=kurgan
+
+cd /var/www/html/biomaps/projects/$project/local/attached_files
+mkdir new_files
+
+# Put the files into local/attached_files/new_files/ directory
+
+cd new_files
+
+find . -type f > new.files
+
+echo "INSERT INTO system.files(
+project_table, reference, "comment", datum, access, user_id, status, sessionid, "sum", mimetype, data_table, exif, slideshow) VALUES " > add.files.sql
+
+while read p; do
+    md5=$(md5sum "$p" | awk '{print $1}')
+    mime=$(mimetype -b "$p")
+    exif=$(exiftool -json "$p" | jq '.[0]' | sed 's/\\"/``/g' )
+    file=$(basename "$p")
+    echo -n "('$project', '$file', 'uploaded from cml', NOW(), 0, 1, 'valid', NULL, '$md5', '$mime', '$table'," '$$'$exif'$$' ", false)," >> add.files.sql
+done < new.files && echo Done &
+
+# remove last comma...
+sed -i '$ s/,$//' add.files.sql
+
+psql -h localhost -p 5432 -U gisadmin gisdata < add.files.sql
+
+find . -type f | xargs -I '{}' ln '{}' /var/www/html/biomaps/projects/$project/local/attached_files/
+
+
+## SQL 
+# We have a pluszid column, which is unique id for all rows which should be updated with a pictures. This id is in the beginning of the file names.
+# $project should be replaced 
+
+INSERT INTO system.file_connect (file_id,conid,temporal,sessionid,rownum)
+SELECT id, CONCAT_WS('',foo.pluszid,'$cml_upl'),FALSE,NULL,1 FROM system.files, (SELECT pluszid FROM $project WHERE pluszid IS NOT NULL) foo WHERE comment='uploaded from cml' AND reference ~ CONCAT_WS('','^',foo.pluszid,'_')
+
+SELECT * FROM $project WHERE pluszid IS NOT NULL AND obm_files_id IS NOT NULL
+
+UPDATE $project SET obm_files_id=CONCAT_WS('',pluszid,'$cml_upl') WHERE pluszid IS NOT NULL  AND obm_files_id IS NULL
