@@ -48,13 +48,13 @@ bash & php scripts to process obm-mobile-app backup files. It is listing / summa
 
 Usage: 
 1) ./obm_backup_process.sh obm_1651822616.json
-´´´
+```
 -rw-r--r-- 1 banm banm  48040 máj   19 08.53 191_data.json
 -rw-r--r-- 1 banm banm      3 máj   19 08.53 192_data.json
 -rw-r--r-- 1 banm banm      3 máj   19 08.53 188_data.json
-´´´
+```
 2) php obm_backup_process.php 191 191_data.json
-´´´
+```
 -rw-r--r-- 1 banm banm    153 máj   19 09.52 form_191_row_9.csv
 -rw-r--r-- 1 banm banm    157 máj   19 09.52 form_191_row_8.csv
 -rw-r--r-- 1 banm banm    155 máj   19 09.52 form_191_row_7.csv
@@ -64,7 +64,7 @@ Usage:
 -rw-r--r-- 1 banm banm    155 máj   19 09.52 form_191_row_3.csv
 -rw-r--r-- 1 banm banm    158 máj   19 09.52 form_191_row_2.csv
 -rw-r--r-- 1 banm banm    154 máj   19 09.52 form_191_row_1.csv
-´´´
+```
 
 3) csvstack form_191_row_* > form_191_2022.05.06.csv
 
