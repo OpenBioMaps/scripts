@@ -67,6 +67,8 @@ Usage:
 ```
 
 3) csvstack form_191_row_* > form_191_2022.05.06.csv
+OR 
+obm_backup_process.R 191
 
 ## tracklog process
 
