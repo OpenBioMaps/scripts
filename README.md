@@ -42,7 +42,7 @@ Edit the settings.py file with your server url and project name.
  
 The resulting csv files will be in the output folder, one file for each upload form.
 
-## obm_backup_process (sh+php version by Miki)
+## obm_backup_process (sh+php+R version by Miki)
 
 bash & php scripts to process obm-mobile-app backup files. It is listing / summarize backup contents
 
@@ -67,8 +67,10 @@ Usage:
 ```
 
 3) csvstack form_191_row_* > form_191_2022.05.06.csv
-OR 
-obm_backup_process.R 191
+
+   OR 
+
+   obm_backup_process.R 191
 
 ## tracklog process
 
