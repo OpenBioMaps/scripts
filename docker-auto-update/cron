@@ -1,0 +1,1 @@
+0 4,16 * * * /srv/docker/openbiomaps/obm-composer/auto_update.sh > /srv/docker/openbiomaps/obm-composer/system_update_job.log 2>&1
