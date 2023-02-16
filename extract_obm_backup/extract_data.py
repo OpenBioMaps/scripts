@@ -1,8 +1,9 @@
 #!./venv/bin/python
+
 import pandas as pd
 import json
 import sys
-from os.path import basename
+import os
 from settings import SERVER_URL, PROJECT
 
 
@@ -19,7 +20,7 @@ def main(filename):
     server_url = SERVER_URL
     project_name = PROJECT
 
-    bn = basename(filename).split('.')[0]
+    bn = os.path.basename(filename).split('.')[0]
 
     with open(filename, 'r') as bak:
         data = json.load(bak)
@@ -48,9 +49,20 @@ def main(filename):
 
                 print(bn + ': ' + str(df.shape[0]))
 
+def loop(folder):
+    for filename in os.scandir(folder):
+        try:
+            if filename.is_file():
+                main(filename.path)
+        except Exception as e:
+            continue
+
 if __name__ == '__main__':
     try:
         filename = sys.argv[1]
-        main(filename)
+        if os.path.isfile(filename):
+            main(filename)
+        else:
+            loop(filename)
     except Exception as e:
         raise

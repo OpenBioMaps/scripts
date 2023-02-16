@@ -1,2 +1,5 @@
+#SERVER_URL = 'https://fhnpi.openbiomaps.org'
 SERVER_URL = 'http://milvus.openbiomaps.org'
-PROJECT = 'OpenBirdMaps'
+#PROJECT = 'Fertő-Hanság Nemzeti Park biotikai adatbázisa'
+#PROJECT = 'OpenBirdMaps'
+PROJECT = 'Eco-Logic Consulting'
