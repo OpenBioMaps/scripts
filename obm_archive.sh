@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # OpenBioMaps archive script by Miklós Bán <banm@vocs.unideb.hu>
-# 2016-10-31, 12.28, 2018.03.02, 2018.09.29
+# 2016-10-31, 12.28, 2018.03.02, 2018.09.29, 2024-08-16
 # feel free to upgrade it!
 # please share your improvements:
 # administrator@openbiomaps.org
@@ -66,7 +66,7 @@ normal) echo "dumping tables"
                 if [[ "$crd" == "*" || "$crd" == "$day" ]]; then
                     if ! echo ${special_tables[@]} | grep -q -w "$table"; then 
                         # normal tables
-                        mt=$(echo "SELECT f_main_table as t FROM projects LEFT JOIN header_names ON (f_table_name=project_table) WHERE project_table='$table'" | $psql -t -h localhost -U $admin_user $system_database)
+                        mt=$(echo "SELECT f_project_table as t FROM projects LEFT JOIN header_names ON (f_project_name=project_table) WHERE project_table='$table'" | $psql -t -h localhost -U $admin_user $system_database)
                         if [ -z "$mt" ]; then
                             echo "Unknown project: $table"
                         else
