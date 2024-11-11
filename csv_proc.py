@@ -1,5 +1,6 @@
 # @Miklós Bán banm@vocs.unideb.hu
 # 2024-05-31
+# Version 1.2
 # A brute force csv processing and transforming to create a postgres table
 #
 # It uses a json config file
@@ -14,7 +15,7 @@
 #    "csv_sep": ";"         // default is ,
 #    "csv_quote": "'",      // default is "
 #    "import_data": false,   // print to stdout or execute postgres commands
-#    "only_create_table": true
+#    "create_table": true
 #}
 
 # Usage:
@@ -31,6 +32,7 @@ from datetime import datetime
 import warnings
 import argparse
 import numpy as np
+import chardet
 
 # Elnyomjuk a UserWarning típusú figyelmeztetéseket
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -64,9 +66,17 @@ import_data = config.get('import_data', False)
 insert_data = config.get('insert_data', False)
 create_table = config.get('create_table', True)
 delete_data = config.get('delete_data', False)
+encoding = config.get('character_encoding', 'utf8')
+sample_size = config.get('sample_size', 4000)
+row_error_check = config.get('row_error_check', False)
+
+# Detecting character encoding
+with open(file_name, 'rb') as f:
+    result = chardet.detect(f.read(10000))  # Trying to detect using the first 10K bytes
+    encoding = result['encoding']
 
 # Reading a sample from the input file
-sample_df = pd.read_csv(file_name, sep=separator, quotechar=quote, nrows=4000)
+sample_df = pd.read_csv(file_name, sep=separator, quotechar=quote, nrows=sample_size, encoding=encoding)
 
 # Type check
 def infer_sql_type(series):
@@ -90,12 +100,16 @@ def infer_sql_type(series):
         else:
             return 'DOUBLE PRECISION'  # 64 bites lebegőpontos szám
     else:
-        # Megpróbáljuk a sorozatot datetime típusra konvertálni
+        # Time típus ellenőrzése: csak HH:MM vagy HH:MM:SS formátumú értékek
+        time_pattern = series.dropna().apply(lambda x: isinstance(x, str) and pd.to_datetime(x, format='%H:%M:%S', errors='coerce') is not pd.NaT or
+                                             pd.to_datetime(x, format='%H:%M', errors='coerce') is not pd.NaT)
+        if time_pattern.all():
+            return 'TIME WITHOUT TIME ZONE'
+
+        # Timestamp vagy Date típus ellenőrzése
         try:
             converted_series = pd.to_datetime(series, errors='coerce', utc=True)
-            # Ellenőrizzük, hogy a konverzió sikeres volt-e
             if converted_series.notnull().all():
-                # Ha a sorozat tartalmaz időkomponenst, akkor TIMESTAMP, különben DATE
                 if (converted_series.dt.hour != 0).any() or (converted_series.dt.minute != 0).any() or (converted_series.dt.second != 0).any():
                     return 'TIMESTAMP WITHOUT TIME ZONE'
                 return 'DATE'
@@ -112,14 +126,15 @@ def normalize_column_names(df):
     df.columns = ['c' + col if col[0].isdigit() else col for col in df.columns]
     return df
 
-# Field normalization for sample DataFrame before type inference
+# Field name normalization based on the sample data
 sample_df = normalize_column_names(sample_df)
 
-# column type assign
+# Field/Column type assign
+print("Detecting column types...")
 column_types = {col: infer_sql_type(sample_df[col]) for col in sample_df.columns}
 
 # Reading input file
-df = pd.read_csv(file_name, sep=separator, quotechar=quote)
+df = pd.read_csv(file_name, sep=separator, quotechar=quote, encoding=encoding, low_memory=False)
 
 # Normalize the column names for the main DataFrame as well
 df = normalize_column_names(df)
@@ -152,34 +167,82 @@ if import_data:
             cur.execute(create_table_query)
 
         if delete_data:
-            print("Really want to truncate the destination table?")
-            print(delete_data_query)
+            print("Do you want to truncate the destination table?")
+            print(f"   `{delete_data_query}`")
             answer = input("yes/no: ").strip().lower()
             if answer == 'yes':
                 cur.execute(delete_data_query)
 
         # Import data
         if insert_data:
-            print("Inserting rows")
 
-            total_rows = df.shape[0]  # row number in the data.frame
-            progress_bar_length = 10
-            step = total_rows // progress_bar_length   # on every 10% print one point
-            # Print the empty progress bar
-            print(f"[{' ' * progress_bar_length}]", end='', flush=True)
-            # Go back to the beginning of row
-            print("\r[", end='', flush=True)
+            # A progress bar
+            if row_error_check:
+                print("Inserting rows:")
+                total_rows = df.shape[0]  # row number in the data.frame
+                progress_bar_length = 10
+                step = total_rows // progress_bar_length   # on every 10% print one point
+                # Print the empty progress bar
+                print(f"[{' ' * progress_bar_length}]", end='', flush=True)
+                # Go back to the beginning of row
+                print("\r[", end='', flush=True)
+            else:
+                print("Processing rows...")
 
+            rows = []
             for index, row in df.iterrows():
-                clean_row = [None if pd.isna(val) or val == '' else val for val in row]
-                insert_query = f"INSERT INTO {schema_name}.{table_name} VALUES ({', '.join(['%s'] * len(clean_row))})"
-                cur.execute(insert_query, tuple(clean_row))
 
-                # print progress
-                if (index + 1) % step == 0:  # on every 10% print one point
-                    print(".", end='', flush=True)  # print point without new line
+                #clean_row = [None if pd.isna(val) or val == '' else val for val in row]
+                clean_row = []
+                for col_name, val in zip(df.columns, row):
+                    # Üres mezők kezelése
+                    if pd.isna(val) or val == '':
+                        clean_row.append(None)
+                    # Csak az 'time' vagy 'timestamp' típusú oszlopokban végezzük el a formázást
+                    elif col_name in column_types and column_types[col_name] in ['TIME WITHOUT TIME ZONE']:
+                        if isinstance(val, str):
+                            try:
+                                # Ha 'HH:MM' formátumú, akkor kiegészítjük 'HH:MM:00'-ra
+                                time_obj = datetime.strptime(val, '%H:%M')
+                                clean_row.append(time_obj.strftime('%H:%M:00'))
+                            except ValueError:
+                                # Ha nem 'HH:MM' formátumú, hagyjuk az eredeti értéket
+                                clean_row.append(val)
+                        else:
+                            clean_row.append(val)
+                    else:
+                        clean_row.append(val)
+
+                # Soronkénti hibaellenőrzés
+                if row_error_check:
+                    insert_query = f"INSERT INTO {schema_name}.{table_name} VALUES ({', '.join(['%s'] * len(clean_row))})"
+                    try:
+                        cur.execute(insert_query, tuple(clean_row))
+                    except Exception as e:
+                        # Ha egyéni sorban hiba történik, kiírjuk a sor számát és a hibát, majd kilépünk
+                        print(f"Error on row {index + 1}: {e}")
+                        cur.execute("ROLLBACK;")
+                        print("Transaction rolled back due to error.")
+                        break  # Opció: megszakítja a teljes importálási folyamatot
+
+                    # print progress
+                    if (index + 1) % step == 0:  # on every 10% print one point
+                        print(".", end='', flush=True)  # print point without new line
+                else:
+                    rows.append(tuple(clean_row))  # Tiszta sor hozzáadása a listához
             
-            print("]")  # The end of the progress bar 
+            if row_error_check:
+                print("]")  # The end of the progress bar 
+
+            if not row_error_check:
+                print("Inserting table...")
+                # Tömbös beillesztés az executemany használatával
+                insert_query = f"INSERT INTO {schema_name}.{table_name} VALUES ({', '.join(['%s'] * len(df.columns))})"
+                try:
+                    cur.executemany(insert_query, rows)
+                except Exception as e:
+                    print(f"Error occurred: {e}")
+                    cur.execute("ROLLBACK;")
 
         # Finsih the transaction
         cur.execute("COMMIT;")
@@ -191,6 +254,7 @@ if import_data:
         print("Transaction rolled back due to error.")
     
 else:
+    # A DEBUG option: printing instead of SQL operations
     # Print create table
     if create_table:
         print(create_table_query)
@@ -201,7 +265,26 @@ else:
     # Print data
     if insert_data:
         for index, row in df.iterrows():
-            clean_row = [None if pd.isna(val) or val == '' else val for val in row]
+            clean_row = []
+            for col_name, val in zip(df.columns, row):
+                # Üres mezők kezelése
+                if pd.isna(val) or val == '':
+                    clean_row.append(None)
+                # Csak az 'time' vagy 'timestamp' típusú oszlopokban végezzük el a formázást
+                elif col_name in column_types and column_types[col_name] in ['TIME WITHOUT TIME ZONE']:
+                    if isinstance(val, str):
+                        try:
+                            # Ha 'HH:MM' formátumú, akkor kiegészítjük 'HH:MM:00'-ra
+                            time_obj = datetime.strptime(val, '%H:%M')
+                            clean_row.append(time_obj.strftime('%H:%M:00'))
+                        except ValueError:
+                            # Ha nem 'HH:MM' formátumú, hagyjuk az eredeti értéket
+                            clean_row.append(val)
+                    else:
+                        clean_row.append(val)
+                else:
+                    clean_row.append(val)
+
             insert_query = f"INSERT INTO {schema_name}.{table_name} VALUES ({', '.join([repr(val) if val is not None else 'NULL' for val in clean_row])});"
             print(insert_query)
 
