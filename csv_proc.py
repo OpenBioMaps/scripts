@@ -9,6 +9,7 @@
 #    "dbname": "",
 #    "dbuser": "",
 #    "dbpass": "",
+#    "dbport": "",
 #    "db_schema_name": "",  //default is public
 #    "db_table_name": "",   //default is the file's name
 #    "csv_file": "",        //optional can be passed as a cml argument
@@ -72,11 +73,12 @@ row_error_check = config.get('row_error_check', False)
 
 # Detecting character encoding
 with open(file_name, 'rb') as f:
-    result = chardet.detect(f.read(10000))  # Trying to detect using the first 10K bytes
+    result = chardet.detect(f.read(30000))  # Trying to detect using the first 10K bytes
     encoding = result['encoding']
 
 # Reading a sample from the input file
-sample_df = pd.read_csv(file_name, sep=separator, quotechar=quote, nrows=sample_size, encoding=encoding)
+with open(file_name, mode='r', encoding='utf-8') as file:
+    sample_df = pd.read_csv(file, sep=separator, quotechar=quote, nrows=sample_size)
 
 # Type check
 def infer_sql_type(series):
@@ -134,7 +136,8 @@ print("Detecting column types...")
 column_types = {col: infer_sql_type(sample_df[col]) for col in sample_df.columns}
 
 # Reading input file
-df = pd.read_csv(file_name, sep=separator, quotechar=quote, encoding=encoding, low_memory=False)
+with open(file_name, mode='r', encoding='utf-8') as file:
+    df = pd.read_csv(file, sep=separator, quotechar=quote, low_memory=False)
 
 # Normalize the column names for the main DataFrame as well
 df = normalize_column_names(df)
@@ -142,7 +145,8 @@ df = normalize_column_names(df)
 # DB Connect, and cursor
 conn = psycopg2.connect(
     host=config['dbhost'],
-    dbname=config['dbname'],
+    database=config['dbname'],
+    port=config.get('dbport',5432),
     user=config['dbuser'],
     password=config['dbpass']
 )
