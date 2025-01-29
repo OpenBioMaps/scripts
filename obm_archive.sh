@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # OpenBioMaps archive script by Miklós Bán <banm@vocs.unideb.hu>
-# 2016-10-31, 12.28, 2018.03.02, 2018.09.29
+# 2016-10-31, 12.28, 2018.03.02, 2018.09.29, 2024-08-16
 # feel free to upgrade it!
 # please share your improvements:
 # administrator@openbiomaps.org
@@ -23,19 +23,22 @@
 
 # Variables - set them as you need
 date=`date +"%b-%d-%y_%H:%M"`
+settings_path='' # e.g. _dinpi
+
 # cron like archive sttings
 doweek=`date +"%-d"`
 month=`date +"%-m"`
 day=`date +"%-u"`
 
-special_tables=(evaluations file_connect files imports polygon_users query_buff shared_polygons uploadings)
+# tables in the gisdata.system
+special_tables=(evaluations file_connect files imports polygon_users query_buff shared_polygons uploadings tracklogs)
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
 
-source $DIR/obm_archive_settings.sh
+source $DIR/obm_archive_settings$settings_path.sh
 
 #tables=( $(cat $table_list) )
-dbs=($project_database $system_database)
+dbs=($all_databases)
 tables=()
 d=()
 schema=()
@@ -66,7 +69,7 @@ normal) echo "dumping tables"
                 if [[ "$crd" == "*" || "$crd" == "$day" ]]; then
                     if ! echo ${special_tables[@]} | grep -q -w "$table"; then 
                         # normal tables
-                        mt=$(echo "SELECT f_main_table as t FROM projects LEFT JOIN header_names ON (f_table_name=project_table) WHERE project_table='$table'" | $psql -t -h localhost -U $admin_user $system_database)
+                        mt=$(echo "SELECT f_project_table as t FROM projects LEFT JOIN header_names ON (f_project_name=project_table) WHERE project_table='$table'" | $psql -t -h localhost -U $admin_user $system_database)
                         if [ -z "$mt" ]; then
                             echo "Unknown project: $table"
                         else

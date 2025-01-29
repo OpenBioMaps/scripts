@@ -1,0 +1,15 @@
+{
+    "dbhost": "",
+    "dbname": "",
+    "dbuser": "",
+    "dbpass": "",
+    "db_schema_name": "",
+    "db_table_name": "",
+    "csv_file": "",
+    "csv_sep": ";",
+    "import_data": true,
+    "create_table": false,
+    "insert_data": true,
+    "delete_data": true,
+    "encoding": "utf8"
+}
