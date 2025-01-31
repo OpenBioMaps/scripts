@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # OpenBioMaps archive script by Miklós Bán <banm@vocs.unideb.hu>
-# 2016-10-31, 12.28, 2018.03.02, 2018.09.29
+# 2016-10-31, 12.28, 2018.03.02, 2018.09.29, 2024-08-16, 2025-01-16
 # feel free to upgrade it!
 # please share your improvements:
 # administrator@openbiomaps.org
@@ -28,14 +28,14 @@ doweek=`date +"%-d"`
 month=`date +"%-m"`
 day=`date +"%-u"`
 
-special_tables=(evaluations file_connect files imports polygon_users query_buff shared_polygons uploadings)
+special_tables=(evaluations file_connect files imports polygon_users query_buff shared_polygons uploadings tracklogs)
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
 
 source $DIR/obm_archive_settings.sh
 
 #tables=( $(cat $table_list) )
-dbs=($project_database $system_database)
+dbs=($all__project_databases)
 tables=()
 d=()
 schema=()
@@ -66,7 +66,7 @@ normal) echo "dumping tables"
                 if [[ "$crd" == "*" || "$crd" == "$day" ]]; then
                     if ! echo ${special_tables[@]} | grep -q -w "$table"; then 
                         # normal tables
-                        mt=$(echo "SELECT f_main_table as t FROM projects LEFT JOIN header_names ON (f_table_name=project_table) WHERE project_table='$table'" | $psql -t -h localhost -U $admin_user $system_database)
+                        mt=$(echo "SELECT f_project_table as t FROM projects LEFT JOIN header_names ON (f_project_name=project_table) WHERE project_table='$table'" | $psql -t -h localhost -U $admin_user $system_database)
                         if [ -z "$mt" ]; then
                             echo "Unknown project: $table"
                         else
@@ -113,7 +113,8 @@ full) echo "dumping databases"
         fi
         echo $db
         # extension is bzip2 to prevent auto cleaning and auto sync
-        printf "%s -h localhost -U %s -n public %s | bzip2 > %s/%s_%s.sql.bzip2" "$pg_dump" $admin_user $db $archive_path $db $date | bash
+        #printf "%s -h localhost -U %s -n public %s | bzip2 > %s/%s_%s.sql.bzip2" "$pg_dump" $admin_user $db $archive_path $db $date | bash
+        printf "%s -h localhost -U %s %s | bzip2 > %s/%s_fulldbarchive_%s.sql.bzip2" "$pg_dump" $admin_user $db $archive_path $db $date | bash
     done
 
 echo "."
@@ -121,14 +122,16 @@ echo "."
 system) echo "dumping system database"
     
     #printf "pg_dump -U gisadmin -f %s/%s_%s.sql -n public %s\n" $archive_path $system_database $date $system_database
-    printf "%s -h localhost -U %s -n public %s | gzip > %s/%s_%s.sql.gz" "$pg_dump" $admin_user $system_database $archive_path $system_database $date | bash
+    #printf "%s -h localhost -U %s -n public %s | gzip > %s/%s_%s.sql.gz" "$pg_dump" $admin_user $system_database $archive_path $system_database $date | bash
+    printf "%s -h localhost -U %s %s | gzip > %s/%s_%s.sql.gz" "$pg_dump" $admin_user $system_database $archive_path $system_database $date | bash
 
 echo "."
 ;;
 projects) echo "dumping project database"
     
     #printf "pg_dump -U gisadmin -f %s/%s_%s.sql -n public %s\n" $archive_path $project_database $date $project_database
-    printf "%s -h localhost -U %s -n public %s | gzip > %s/%s_%s.sql.gz" "$pg_dump" $admin_user $project_database $archive_path $project_database $date | bash
+    #printf "%s -h localhost -U %s -n public %s | gzip > %s/%s_%s.sql.gz" "$pg_dump" $admin_user $project_database $archive_path $project_database $date | bash
+    printf "%s -h localhost -U %s %s | gzip > %s/%s_%s.sql.gz" "$pg_dump" $admin_user $project_database $archive_path $project_database $date | bash
 
 echo "."
 ;;

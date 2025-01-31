@@ -4,6 +4,7 @@ table_list="${HOME}/.archive_list.txt"
 # postgres parameters
 project_database="gisdata"
 system_database="biomaps"
+all_project_databases="gisdata"
 admin_user="gisadmin"
 archive_path="/home/archives"
 pgport="5432"

@@ -24,23 +24,43 @@ function backup_parse($file) {
 function form_parse($file,$formId) {
     $json_file = file($file);
     $n = 0;
-    foreach ($json_file as $jline) {
-        
-        $j = json_decode($jline,true);
+    // only on line
+    $json = json_decode($json_file[0],true);
+    foreach ($json as $j) {
         if (isset($j['data'])) {
             $header = array_keys($j['data']);
             $d = array_values($j['data']);
             $data = array();
             foreach ($j['data'] as $key=>$value) {
                 if (is_array($value)) {
-                    $data[] = implode_recursive(",",$value);
+                    $string = implode_recursive(",",$value);
+                    $string = preg_replace("/,$/",'',$string);
+                    $data[] = $string;
                 } else {
                     $data[] = $value;
-                }
-            }
+                }   
+            }   
             $csv_data = sprintf("'%s'\n'%s'\n", implode("','",$header), implode("','",$data));
             $csv_file = sprintf("form_%d_row_%d.csv",$formId,$n);
             file_put_contents($csv_file, $csv_data);
+        }
+        if (isset($j['meta'])) {
+            $header = array_keys($j['meta']);
+            $d = array_values($j['meta']);
+            $data = array();
+            foreach ($j['meta'] as $key=>$value) {
+                if (is_array($value)) {
+                    $string = implode_recursive(",",$value);
+                    $string = preg_replace("/,$/",'',$string);
+                    $data[] = $string;
+                } else {
+                    $data[] = $value;
+                }   
+            }   
+            $csv_data = sprintf("'%s'\n'%s'\n", implode("','",$header), implode("','",$data));
+            $csv_file = sprintf("form_%d_meta_%d.csv",$formId,$n);
+            file_put_contents($csv_file, $csv_data);
+
         }
         $n++;
     }
@@ -59,7 +79,6 @@ function implode_recursive(string $separator, array $array): string
             }
         }
     }
-
     return $string;
 }
 ?>
