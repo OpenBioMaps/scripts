@@ -23,19 +23,22 @@
 
 # Variables - set them as you need
 date=`date +"%b-%d-%y_%H:%M"`
+settings_path='' # e.g. _dinpi
+
 # cron like archive sttings
 doweek=`date +"%-d"`
 month=`date +"%-m"`
 day=`date +"%-u"`
 
+# tables in the gisdata.system
 special_tables=(evaluations file_connect files imports polygon_users query_buff shared_polygons uploadings tracklogs)
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
 
-source $DIR/obm_archive_settings.sh
+source $DIR/obm_archive_settings$settings_path.sh
 
 #tables=( $(cat $table_list) )
-dbs=($all__project_databases)
+dbs=($all_project_databases)
 tables=()
 d=()
 schema=()
