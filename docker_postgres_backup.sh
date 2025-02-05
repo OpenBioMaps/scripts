@@ -9,9 +9,6 @@
 # - Error handling with immediate failure on critical issues
 # - Configurable minimum file sizes and container name
 #
-# Input:
-#  - Docker container name: Can be provided as parameter or uses default
-#
 # Output files:
 #  1. SQL dump file: sql_full_dump_YYYYMMDD_HHMMSS.sql
 #  2. Compressed database files: postgresql_files_YYYYMMDD_HHMMSS.tar.gz
@@ -31,7 +28,7 @@ set -euo pipefail
 # ------------------
 # Configuration
 # ------------------
-DEFAULT_CONTAINER_NAME="obm-composer_biomaps_db_1"
+DB_NAME_SUBSTRING="biomaps_db"
 MIN_SQL_SIZE=102400    # 100KB minimum expected SQL dump size
 MIN_TAR_SIZE=5120000   # 5MB minimum expected compressed files size
 BACKUP_DIR="${PWD}/backups"
@@ -39,6 +36,140 @@ BACKUP_DIR="${PWD}/backups"
 # ------------------
 # Functions
 # ------------------
+find_docker_container() {
+    local search_string="$1"
+    
+    # Check Docker installation
+    if ! command -v docker &>/dev/null; then
+        echo "Error: Docker is not installed!" >&2
+        return 1
+    fi
+
+    # Get all container names
+    local containers
+    containers=$(docker ps -a --format "{{.Names}}")
+    
+    if [ -z "$containers" ]; then
+        echo "Error: No containers found!" >&2
+        return 2
+    fi
+
+    # Find exact name matches
+    local matches
+    matches=$(grep -F -- "$search_string" <<< "$containers")
+    
+    if [ -z "$matches" ]; then
+        echo "Error: No containers matching: '$search_string'" >&2
+        return 3
+    fi
+
+    # Verify single match
+    local match_count
+    match_count=$(wc -l <<< "$matches")
+    
+    if [ "$match_count" -gt 1 ]; then
+        echo "Error: Multiple containers matched:" >&2
+        echo "$matches" >&2
+        return 4
+    fi
+
+    if ! docker ps --filter "name=${matches}" --filter "status=running" | grep -q "${matches}"; then
+        echo "Error: Container not running: $matches" >&2
+        return 5
+    fi
+
+    # Output single matching container name
+    echo "$matches"
+}
+
+check_container_storage() {
+    echo "Checking storage usage in container: $CONTAINER_NAME"
+    docker exec "$CONTAINER_NAME" df -h /var/lib/postgresql/data || {
+        echo "ERROR: Failed to check container storage!" >&2
+        exit 1
+    }
+}
+
+list_active_connections() {
+    docker exec "$CONTAINER_NAME" \
+        psql -U postgres -d postgres -t\
+        -c "SELECT pid, usename, datname, application_name, state, query_start, client_addr 
+            FROM pg_stat_activity 
+            WHERE pid <> pg_backend_pid()
+            AND client_addr IS NOT NULL;"
+#            AND state = 'active'
+#            AND usename NOT IN ('postgres', 'replicator')
+}
+
+terminate_connections() {
+    local pids=$1
+    for pid in $pids; do
+        echo "Terminating PID $pid..."
+        docker exec "$CONTAINER_NAME" \
+            psql -U postgres -d postgres \
+            -c "SELECT pg_terminate_backend($pid)" >/dev/null 2>&1
+            
+        if [ $? -eq 0 ]; then
+            echo "Successfully terminated: $pid"
+        else
+            echo "ERROR: Failed to terminate $pid" >&2
+        fi
+    done
+}
+
+confirm_action() {
+    local message="$1"
+    read -p "${message} (y/n) " -n 1 -r
+    echo
+    [[ $REPLY =~ ^[Yy]$ ]]
+}
+
+list_active_connection_pids() {
+    list_active_connections | awk 'NR>=1 && NF>0 {print $1}'
+}
+
+check_connections() {
+    echo "Searching for active connections..."
+    connections=$(list_active_connections)
+    
+    if [ -z "$connections" ]; then
+        echo "No active connections to terminate"
+        return 0
+    fi
+
+    while true; do
+        echo "==== Active Connections ===="
+        echo "$connections"
+        echo "==========================="
+
+        if ! confirm_action "Are you sure you want to terminate these connections?"; then
+            echo "Continuing without termination"
+            return 1
+        fi
+
+        pids=$(echo "$connections" | awk 'NR>=1 {print $1}')
+        terminate_connections "$pids"
+
+        echo "Verifying termination..."
+        remaining=$(list_active_connection_pids | wc -l)
+
+        if [ "$remaining" -gt 0 ]; then
+            echo "Warning: ${remaining} connections still active"
+            
+            if ! confirm_action "Would you like to retry termination?"; then
+                echo "Proceeding with active connections"
+                return 1
+            fi
+            
+            connections=$(list_active_connections)
+            continue
+        else
+            echo "Termination completed successfully"
+            break
+        fi
+    done
+}
+
 check_file_size() {
     local file_path="$1"
     local min_size="$2"
@@ -52,13 +183,6 @@ check_file_size() {
     if [ "$actual_size" -lt "$min_size" ]; then
         echo "ERROR: File size suspiciously small: $file_path" >&2
         echo "       Expected minimum: $min_size bytes, Actual: $actual_size bytes" >&2
-        exit 1
-    fi
-}
-
-verify_container() {
-    if ! docker inspect "$1" &>/dev/null; then
-        echo "ERROR: Container '$1' not found!" >&2
         exit 1
     fi
 }
@@ -93,17 +217,27 @@ validate_checksum() {
 }
 
 # ------------------
-# Main backup process
+# Terminate active connections
 # ------------------
+# Container name searching
+CONTAINER_NAME=$(find_docker_container "$DB_NAME_SUBSTRING") || exit $?
+echo "Found container: $CONTAINER_NAME"
+
+check_container_storage
+if ! confirm_action "Are you sure you want to continue?"; then
+    exit 1
+fi
+check_connections
+
+# ------------------
+# Backup process
+# ------------------
+
 # Create backup directory
 mkdir -p "$BACKUP_DIR" || {
     echo "ERROR: Failed to create backup directory: $BACKUP_DIR" >&2
     exit 1
 }
-
-# Container name handling
-CONTAINER_NAME=${1:-$DEFAULT_CONTAINER_NAME}
-verify_container "$CONTAINER_NAME"
 
 # Generate timestamp
 DATE=$(date +"%Y%m%d_%H%M%S")
