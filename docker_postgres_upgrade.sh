@@ -27,6 +27,7 @@
 
 
 set -euo pipefail
+# set -xeo pipefail 
 
 # ------------------
 # Configuration
@@ -261,9 +262,7 @@ validate_checksum() {
     
     echo "Validating file integrity..."
     container_sum=$(docker exec "$CONTAINER_NAME" sha256sum "/home/$src" | cut -d' ' -f1)
-echo "container_sum: $container_sum"  >&2
     host_sum=$(sha256sum "$dest" | cut -d' ' -f1)
-echo "host_sum: $host_sum"  >&2
     if [ "$container_sum" != "$host_sum" ]; then
         echo "CRITICAL ERROR: Checksum mismatch for $src" >&2
         echo "Container: ${container_sum:0:12}... Host: ${host_sum:0:12}..." >&2
@@ -277,7 +276,24 @@ sql_full_dump(){
     local VERSION_FILE="$2"
 
     # Check existing SQL dumps
-    latest_sql=$(ls -t backups/*.sql 2>/dev/null | head -n1)
+#     shopt -s nullglob
+#         latest_sql=$(ls -t $BACKUP_DIR/*.sql 2>/dev/null | head -n1)
+#     shopt -u nullglob
+# echo "latest_sql: $latest_sql" >&2
+# echo "BACKUP_DIR: $BACKUP_DIR" >&2
+#     if [[ "$latest_sql" == "$BACKUP_DIR" ]]; then
+#         latest_sql=""
+#     fi
+
+
+if [ -n "$(find $BACKUP_DIR -name "*.sql" 2>/dev/null)" ]; then
+    latest_sql=$(ls -t $BACKUP_DIR/*.sql 2>/dev/null | head -n1)
+else
+    latest_sql=""
+fi
+
+
+
     if [[ -n "$latest_sql" ]]; then
         echo 
         echo "Latest SQL backup: $latest_sql"
@@ -378,7 +394,19 @@ sql_full_dump(){
 
 db_files_backup(){
     # Check existing file backups
-    latest_file_backup=$(ls -t backups/*.tar.gz 2>/dev/null | head -n1)
+    # shopt -s nullglob
+    # latest_file_backup=$(ls -t $BACKUP_DIR/*.tar.gz 2>/dev/null | head -n1)
+    # shopt -u nullglob
+    # if [[ "$latest_file_backup" == "$BACKUP_DIR" ]]; then
+    #     latest_file_backup=""
+    # fi
+
+if [ -n "$(find $BACKUP_DIR -name "*.tar.gz" 2>/dev/null)" ]; then
+    latest_file_backup=$(ls -t $BACKUP_DIR/*.tar.gz 2>/dev/null | head -n1)
+else
+    latest_file_backup=""
+fi
+
     if [[ -n "$latest_file_backup" ]]; then
         echo
         echo "Latest files backup: $latest_file_backup"
@@ -1302,8 +1330,13 @@ restore_database_with_progress() {
     local sql_file_size=$(stat -c %s "$sql_dump_file")
     
     # Start the restoration process in the background
-    (cat "$sql_dump_file" | $compose_cmd exec -T $db_service_name psql -U $db_user postgres > "$log_file" 2>&1) & local restore_pid=$!
-    
+# echo "compose_cmd: $compose_cmd" >&2
+    if [[ "$compose_cmd" == "docker" ]]; then
+        (cat "$sql_dump_file" | $compose_cmd exec -i $db_service_name psql -U $db_user postgres > "$log_file" 2> >(tee -a "$log_file" >&2)) & local restore_pid=$!
+        #(cat "$sql_dump_file" | $compose_cmd exec $db_service_name psql -U $db_user postgres > "$log_file" 2>&1) & local restore_pid=$!
+    else
+        (cat "$sql_dump_file" | $compose_cmd exec -T $db_service_name psql -U $db_user postgres > "$log_file" 2>&1) & local restore_pid=$!
+    fi
     # Display progress indicator
     local start_time=$(date +%s)
     echo "Restoration in progress..."
@@ -1321,19 +1354,17 @@ restore_database_with_progress() {
         if [ -f "$log_file" ]; then
             # Count lines in log file as a rough progress indicator
             local log_lines=$(wc -l < "$log_file")
-            printf "\rRestoring database... Elapsed time: %02d:%02d - Log lines: %d" "$minutes" "$seconds" "$log_lines"
+            printf "\rRestoring database... Elapsed time: %02d:%02d - Log lines: %d\r" "$minutes" "$seconds" "$log_lines"
         else
-            printf "\rRestoring database... Elapsed time: %02d:%02d" "$minutes" "$seconds"
+            printf "\rRestoring database... Elapsed time: %02d:%02d\r" "$minutes" "$seconds"
         fi
-        
-        sleep 1
+        sleep 0.3
     done
     
     # Check the exit status of the restoration process
     wait $restore_pid
     local restore_status=$?
-    
-    echo # New line after progress indicator
+    echo 
     
     if [ $restore_status -eq 0 ]; then
         echo "Successful restoration. Log: $log_file"
@@ -1410,6 +1441,11 @@ case $1 in
         if docker ps --format '{{.Names}}' | grep -qw "pg-test"; then
             echo "Container 'pg-test' already exists. Skipping startup."
         else
+            if docker ps -a --format '{{.Names}}' | grep -qw "pg-test"; then
+                echo "Container 'pg-test' exists but is not running. Removing it..."
+                docker rm -f pg-test >/dev/null
+            fi
+            echo "Starting test container..."
             docker run --name pg-test \
                 -d $DB_IMAGE || {
                     echo "Error: Failed to start test container" >&2
@@ -1424,22 +1460,35 @@ case $1 in
         echo "-----------------------"
         echo "Restoring dump file..."
         echo "-----------------------"
-        docker cp "${BACKUP_DIR}/$SQL_DUMP_FILE" pg-test:/tmp/dump.sql
 
-        restore_output=$(docker exec pg-test psql -U $DB_USER -d postgres -f /tmp/dump.sql 2>&1)
-        exit_code=$?
-        
-        if [ $exit_code -ne 0 ]; then
-            echo "Error: Failed to restore dump" >&2
-            echo "PostgreSQL returned the following error:" >&2
-            echo "$restore_output" >&2
-            echo
-            echo "-----------------------------"
-            echo "Removing pg-test container..."
-            echo "-----------------------------"
-            docker rm -f pg-test >/dev/null
-            exit 1
-        fi
+
+
+        set +e
+        LOG_FILE="$BACKUP_DIR/db_restore_${DATE}.log"
+        # if confirm_action "Are you sure you want to RESTORE the DATABASE? (cat $SQL_DUMP_FILE | $COMPOSE_CMD exec -T $DB_SERVICE_NAME psql -U $DB_USER postgres)"; then
+        restore_database_with_progress "$BACKUP_DIR/$SQL_DUMP_FILE" docker pg-test "$DB_USER" "$LOG_FILE" || exit 1
+        # fi
+        set -e
+
+        # docker cp "${BACKUP_DIR}/$SQL_DUMP_FILE" pg-test:/tmp/dump.sql
+        # set +e
+        # restore_output=$(docker exec pg-test psql -U $DB_USER -d postgres -f /tmp/dump.sql 2>&1)
+        # exit_code=$?
+        # set -e
+
+
+
+        # if [ $exit_code -ne 0 ]; then
+        #     echo "Error: Failed to restore dump" >&2
+        #     echo "PostgreSQL returned the following error:" >&2
+        #     echo "$restore_output" >&2
+        #     echo
+        #     echo "-----------------------------"
+        #     echo "Removing pg-test container..."
+        #     echo "-----------------------------"
+        #     docker rm -f pg-test >/dev/null
+        #     exit 1
+        # fi
 
         # Run test queries and save output
         echo
@@ -1599,13 +1648,14 @@ case $1 in
         fi
 
         if confirm_action "Are you sure you want to START the CONTAINERS (and stop app until restore)? ($COMPOSE_CMD -f "$COMPOSE_FILE" up -d)"; then
+            $COMPOSE_CMD stop
             $COMPOSE_CMD -f "$COMPOSE_FILE" up -d
             $COMPOSE_CMD stop app
         fi
 
         # Database restore
         set +e
-        LOG_FILE="db_restore_${DATE}.log"
+        LOG_FILE="$BACKUP_DIR/db_restore_${DATE}.log"
         if confirm_action "Are you sure you want to RESTORE the DATABASE? (cat $SQL_DUMP_FILE | $COMPOSE_CMD exec -T $DB_SERVICE_NAME psql -U $DB_USER postgres)"; then
             restore_database_with_progress "$BACKUP_DIR/$SQL_DUMP_FILE" "$COMPOSE_CMD" "$DB_SERVICE_NAME" "$DB_USER" "$LOG_FILE" || exit 1
         fi
