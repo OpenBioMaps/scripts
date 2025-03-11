@@ -8,14 +8,19 @@
 # - Container cleanup after successful backup
 # - Error handling with immediate failure on critical issues
 # - Configurable minimum file sizes and container name
-# - locate the database service within a docker-compose.yml file
-#   specifically using the value defined in the DB_SERVICE_SEARCH_STRING, 
-#   which is set to 'openbiomaps/database'.
+# - Locate the database service within a docker-compose.yml file
+#   specifically using the values defined in the DB_SERVICE_SEARCH_STRINGS
+# - Modifying images, add or modify database named volume and check other named volumes in docker-compose file
+# - Bring down and up Docker Compose when necessary (after confirmation)
+# - Restore dump file to the database container
+# - Run validation queries
 #
 # Output files:
 #  1. SQL dump file: sql_full_dump_YYYYMMDD_HHMMSS.sql
 #  2. Compressed database files: postgresql_files_YYYYMMDD_HHMMSS.tar.gz
 #  3. PostgreSQL version info: postgresql_version_YYYYMMDD_HHMMSS.txt
+#  4. Docker-compose file: docker-compose.yml_YYYYMMDD_HHMMSS
+#  5. Database restore log file: db_restore_YYYYMMDD_HHMMSS.log
 #
 # File locations:
 #  - Inside container: Created in /home/ directory
@@ -26,14 +31,14 @@
 #    to enable clean reinstall by removing existing objects
 
 
-set -euo pipefail
-# set -xeo pipefail 
+#set -euo pipefail
+#set -xeo pipefail 
 
 # ------------------
 # Configuration
 # ------------------
 DB_USER="biomapsadmin"
-DB_SERVICE_SEARCH_STRING=$'openbiomaps/database
+DB_SERVICE_SEARCH_STRINGS=$'openbiomaps/database
 openbiomaps/web-app:pg
 openbiomaps/web-app:11-
 openbiomaps/web-app:13-'
@@ -42,7 +47,7 @@ APP_IMAGE="registry.gitlab.com/openbiomaps/web-app:latest"
 MAPSERVER_IMAGE="registry.gitlab.com/openbiomaps/web-app:mapserver"
 PG_NEW_VOLUME="pg15_data"
 DB_TARGET_PATH="/var/lib/postgresql/data"
-MIN_SQL_SIZE=102400    # 100KB minimum expected SQL dump size
+MIN_SQL_SIZE=204800    # 200KB minimum expected SQL dump size (greater than the empty biomaps_db database)
 MIN_TAR_SIZE=5120000   # 5MB minimum expected compressed files size
 BACKUP_DIR="${PWD}/backups"
 DATE=$(date +"%Y%m%d_%H%M%S")
@@ -70,14 +75,35 @@ find_docker_container() {
         return 1
     fi
 
-    # Get all container names
-    local containers
-    containers=$(docker ps -a --format "{{.Names}}")
-# echo "containers: $containers" >&2
+    # Initialize containers variable
+    local containers=$(docker ps -a --format "{{.Names}}")
+
+    # If no containers found, ask to start them
     if [ -z "$containers" ]; then
         echo "Error: No containers found!" >&2
-        return 2
+        if confirm_action "Can I run docker-compose up -d command?"; then
+            echo "Running docker-compose up -d command..." >&2
+            $COMPOSE_CMD -f "$COMPOSE_FILE" up -d
+        else
+            echo "Operation cancelled by user." >&2
+            return 1
+        fi
     fi
+
+    local max_attempts=20
+    local attempt=0
+    # Start a loop that continues until containers are found
+    while [ -z "$containers" ]; do
+        # Get all container names
+        containers=$(docker ps -a --format "{{.Names}}")
+        if [ $attempt -ge $max_attempts ]; then
+            echo "Error: PostgreSQL did not become ready after $max_attempts attempts." >&2
+            exit 1
+        fi
+        echo "\nAttempt $attempt: PostgreSQL is not ready. Retrying in 1 seconds..." >&2
+        sleep 1
+        attempt=$((attempt+1))
+    done
 
     # Find exact name matches
     local matches
@@ -85,8 +111,26 @@ find_docker_container() {
 # echo "matches: $matches" >&2
     if [ -z "$matches" ]; then
         echo "Error: No containers matching: '$search_string'" >&2
-        return 3
+        if confirm_action "Can I run docker-compose up -d command?"; then
+            echo "Running docker-compose up -d command..." >&2
+            $COMPOSE_CMD -f "$COMPOSE_FILE" up -d
+        fi
     fi
+
+    local max_attempts=20
+    local attempt=0
+    # Start a loop that continues until matches are found
+    while [ -z "$matches" ]; do
+        containers=$(docker ps -a --format "{{.Names}}")
+        matches=$(grep -F -- "$search_string" <<< "$containers")
+        if [ $attempt -ge $max_attempts ]; then
+            echo "Error: PostgreSQL container did not become ready after $max_attempts attempts." >&2
+            exit 1
+        fi
+        printf "Attempt %d: PostgreSQL container is not ready. Retrying in 1 seconds...\r" "$attempt" >&2
+        sleep 1
+        attempt=$((attempt+1))
+    done
 
     # Verify single match
     local match_count
@@ -180,7 +224,12 @@ confirm_action() {
     local message="$1"
     read -p "${message} (y/n) " -n 1 -r
     echo
-    [[ $REPLY =~ ^[Yy]$ ]]
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        return 0
+    else
+        return 1
+    fi
+    # [[ $REPLY =~ ^[Yy]$ ]]
 }
 
 list_active_connection_pids() {
@@ -331,7 +380,7 @@ fi
         echo "ERROR: pg_dumpall failed!" >&2
         exit 1
     fi
-    set -e
+    # set -e
 
     # docker exec -t "$CONTAINER_NAME" bash -c \
     #     "pg_dumpall -U $DB_USER --clean > /home/$sql_dump_file" || {
@@ -440,7 +489,7 @@ fi
         echo "ERROR: Compression failed!" >&2
         exit 1
     fi
-    set -e
+    # set -e
 
     # Copy to host with progress indicator
     echo "Copying compressed files to host..."
@@ -473,7 +522,7 @@ fi
     container_cleanup "$CONTAINER_NAME" "$COMPRESSED_DB_FILES"
 
     echo "-------------------------------------------------------------------"
-    echo "Database file backup completed successfully and container cleaned!"
+    echo "Database files backup completed successfully and container cleaned!"
     echo "-------------------------------------------------------------------"
     echo "File saved in: $BACKUP_DIR"
     echo "- Compressed DB files: $COMPRESSED_DB_FILES"
@@ -526,7 +575,7 @@ show_help() {
     echo 
     echo "Usage: $0 <command> [db_container_name]"
     echo ""
-    echo " • Locate the database service within a docker-compose.yml file (using a DB_SERVICE_SEARCH_STRING"
+    echo " • Locate the database service within a docker-compose.yml file (using a DB_SERVICE_SEARCH_STRINGS"
     echo "   which is default set to 'openbiomaps/database' Docker Hub repository)."
     echo " • Verifies storage status and then prompts the user for confirmation before proceeding."
     echo ""
@@ -646,6 +695,11 @@ wait_for_postgres() {
   local db_name="$3"
   local max_attempts="${4:-10}"
   local sleep_interval="${5:-3}"
+# echo "container: $container"
+# echo "db_user: $db_user"
+# echo "db_name: $db_name"
+# echo "max_attempts: $max_attempts"
+# echo "sleep_interval: $sleep_interval"
 
   echo "Waiting for PostgreSQL to be ready in container '$container' (User: $db_user, Database: $db_name)..."
 
@@ -731,6 +785,7 @@ extract_volume_from_compose() {
     local volume_raw=$(grep -E "^\s*-\s*[^:]+:$target_path" "$yaml_file" | head -n1)
 # echo "Raw volume definition: '$volume_raw'" >&2 
     if [[ -z "$volume_raw" ]]; then
+        echo
         echo "Error: Volume definition not found for path '$target_path'" >&2
         return 0
     fi
@@ -850,7 +905,7 @@ get_data_services() {
         return 1
     fi
 
-    # Find all image lines containing "$DB_SERVICE_SEARCH_STRING"
+    # Find all image lines containing "$DB_SERVICE_SEARCH_STRINGS"
     local image_lines=""
     local found_line
 
@@ -866,7 +921,7 @@ get_data_services() {
 # echo "image_lines: $image_lines" >&2
             fi
         fi
-    done <<< "$DB_SERVICE_SEARCH_STRING"
+    done <<< "$DB_SERVICE_SEARCH_STRINGS"
 
 # echo "image_lines: $image_lines" >&2
 
@@ -936,6 +991,10 @@ update_image() {
     if [[ -n "$image_lines" ]]; then
         # Retrieve the line number from the first match
         line_num=$(echo "$image_lines" | head -n 1 | cut -d: -f1)
+        if [[ "$image_lines" == *"$new_image"* ]]; then
+            echo "The new image [$new_image] is already in use. No changes needed."
+            return
+        fi
         if confirm_action "Do you want to replace the found [$image_lines] with [$new_image]?"; then
             replace_image "$compose_file" "$line_num" "$new_image"
         else
@@ -953,82 +1012,159 @@ check_volume_exists() {
     # Array to store volume names defined in the Compose file.
     local defined_volumes=()
     local in_volumes=0
+    local volumes_indent=0
 
     # Read the file line by line.
     while IFS= read -r line || [[ -n "$line" ]]; do
         # Skip comment lines starting with '#' (ignoring any leading whitespace)
-        if [[ "$line" =~ ^[[:space:]]*# ]]; then
-            continue
-        fi
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
 
         # Detect the beginning of the "volumes:" block.
         if [[ "$line" =~ ^[[:space:]]*volumes: ]]; then
             in_volumes=1
+            volumes_indent=$(echo "$line" | sed 's/[^ \t].*//' | wc -c)
             continue
         fi
 
         # Process lines only if we're in the volumes block.
         if [[ $in_volumes -eq 1 ]]; then
-            # Skip blank lines.
-            if [[ "$line" =~ ^[[:space:]]*$ ]]; then
-                continue
-            fi
-
-            # If the line is not indented, the volumes block has ended.
-            if ! [[ "$line" =~ ^[[:space:]]+ ]]; then
+            # Check if we've exited the volumes block
+            current_indent=$(echo "$line" | sed 's/[^ \t].*//' | wc -c)
+            if [[ $current_indent -le $volumes_indent ]] || [[ "$line" =~ ^[^[:space:]#] ]]; then
                 in_volumes=0
                 continue
             fi
 
-            # Avoid lines that are commented out even after indentation.
-            if [[ "$line" =~ ^[[:space:]]*# ]]; then
-                continue
-            fi
+            # Skip empty/commented lines
+            [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+            [[ "$line" =~ ^[[:space:]]*# ]] && continue
 
-            # Extract the volume name from the line (remove any trailing colon).
-            vol=$(echo "$line" | sed -E 's/^[[:space:]]+([^:]+):?.*/\1/')
+            # Extract volume name (supports both named volumes and definitions)
+            vol=$(echo "$line" | sed -E 's/^[[:space:]]*[-]?[[:space:]]*([^: #]+).*/\1/')
             defined_volumes+=("$vol")
         fi
     done < "$compose_file"
 
-    # Check if the specified volume is defined within the Compose file.
-    local volume_defined=false
-    for vol in "${defined_volumes[@]}"; do
-        if [[ "$vol" == "$volume_name" ]]; then
-            volume_defined=true
-            break
-        fi
-    done
-
-    if ! $volume_defined; then
+    # # Check volume presence
+    count_in_volumes=$(printf '%s\n' "${defined_volumes[@]}" | grep -cxF "$volume_name")
+    if [[ $count_in_volumes -eq 0 ]]; then
         echo
         echo "----------------------------------------------------------------"
-        echo "Error: Volume '$volume_name' is NOT defined in the compose file."
+        echo "Error: Volume '$volume_name' is NOT defined in the compose file!"
         echo "----------------------------------------------------------------"
         echo
-        return 0
-    fi
-
-    # Retrieve the project prefix using the user-defined function.
-    local prefix
-    prefix=$(get_docker_project_prefix $compose_file)
-    
-    # Compose the full volume name as Docker sets it (e.g., "project_volume").
-    local full_volume_name="${prefix}_${volume_name}"
-
-    # Check if the Docker volume with the full name exists.
-    if docker volume ls -q | grep -q "^${full_volume_name}$"; then
-        echo "Volume '$volume_name' is defined in the compose file and '$full_volume_name' exists in Docker."
-        return 0
+    elif [[ $count_in_volumes -ge 2 ]]; then
+        echo "Volume '$volume_name' is properly defined and used."
     else
-        echo 
-        echo "----------------------------------------------------------------------------------------------------"
-        echo "Error: Volume '$volume_name' is defined in the compose file but $full_volume_name does NOT exist in Docker."
-        echo "----------------------------------------------------------------------------------------------------"
         echo
-        return 0
+        echo "--------------------------------------------------------------------------------"
+        echo "Error: Volume '$volume_name' is NOT defined in SERVICES: or in VOLUMES: section!"
+        echo "--------------------------------------------------------------------------------"
     fi
+
+    # # Check Docker volume existence
+    # local full_name="$(get_docker_project_prefix "$compose_file")_${volume_name}"
+    # if ! docker volume inspect "$full_name" &>/dev/null; then
+    #     echo "Error: Docker volume '$full_name' not found."
+    # fi
+
+    return 0
 }
+
+# check_volume_exists() {
+#     local compose_file="$1"
+#     local volume_name="$2"
+
+#     # Array to store volume names defined in the Compose file.
+#     local defined_volumes=()
+#     local in_volumes=0
+#     local volumes_indent=0
+
+#     # Read the file line by line.
+#     while IFS= read -r line || [[ -n "$line" ]]; do
+#         # Skip comment lines starting with '#' (ignoring any leading whitespace)
+#         if [[ "$line" =~ ^[[:space:]]*# ]]; then
+#             continue
+#         fi
+
+#         # Detect the beginning of the "volumes:" block.
+#         if [[ "$line" =~ ^[[:space:]]*volumes: ]]; then
+#             in_volumes=1
+#             # Calculate the indentation level of the volumes: line
+# volumes_indent=$(echo "$line" | sed 's/[^ \t].*//' | wc -c)
+#             continue
+#         fi
+
+#         # Process lines only if we're in the volumes block.
+#         if [[ $in_volumes -eq 1 ]]; then
+#             # Skip blank lines.
+#             if [[ "$line" =~ ^[[:space:]]*$ ]]; then
+#                 continue
+#             fi
+
+#             # Calculate current line indentation
+# current_indent=$(echo "$line" | sed 's/[^ \t].*//' | wc -c)
+            
+#             # If the line has less or equal indentation than the volumes: line, 
+#             # or it's a new top-level section (ending with a colon), 
+#             # then the volumes block has ended
+#             if [[ $current_indent -le $volumes_indent ]] || [[ "$line" =~ ^[[:space:]]*[a-zA-Z0-9_-]+: ]]; then
+#                 in_volumes=0
+#                 continue
+#             fi
+
+#             # Avoid lines that are commented out even after indentation.
+#             if [[ "$line" =~ ^[[:space:]]*# ]]; then
+#                 continue
+#             fi
+
+#             # Extract the volume name from the line (remove any trailing colon).
+#             vol=$(echo "$line" | sed -E 's/^[[:space:]]+([^:]+):?.*/\1/')
+#             defined_volumes+=("$vol")
+#         fi
+#     done < "$compose_file"
+
+# echo "Defined volumes: ${defined_volumes[@]}" >&2
+
+#     # Check if the specified volume is defined within the Compose file.
+#     local volume_defined=false
+#     for vol in "${defined_volumes[@]}"; do
+# echo "Checking volume: $vol" >&2
+#         if [[ "$vol" == "$volume_name" ]]; then
+#             volume_defined=true
+#             break
+#         fi
+#     done
+
+#     if ! $volume_defined; then
+#         echo
+#         echo "----------------------------------------------------------------"
+#         echo "Error: Volume '$volume_name' is NOT defined in the compose file."
+#         echo "----------------------------------------------------------------"
+#         echo
+#         return 0
+#     fi
+
+#     # Retrieve the project prefix using the user-defined function.
+#     local prefix
+#     prefix=$(get_docker_project_prefix $compose_file)
+    
+#     # Compose the full volume name as Docker sets it (e.g., "project_volume").
+#     local full_volume_name="${prefix}_${volume_name}"
+
+#     # Check if the Docker volume with the full name exists.
+#     if docker volume ls -q | grep -q "^${full_volume_name}$"; then
+#         echo "Volume '$volume_name' is defined in the compose file and '$full_volume_name' exists in Docker."
+#         return 0
+#     else
+#         echo 
+#         echo "----------------------------------------------------------------------------------------------------"
+#         echo "Error: Volume '$volume_name' is defined in the compose file but $full_volume_name does NOT exist in Docker."
+#         echo "----------------------------------------------------------------------------------------------------"
+#         echo
+#         return 0
+#     fi
+# }
 
 replace_volume() {
     local compose_file="$1"
@@ -1324,22 +1460,21 @@ restore_database_with_progress() {
         return 1
     fi
     
+    wait_for_postgres $CONTAINER_NAME $DB_USER "postgres" 10 3
+
     echo "Starting database restoration..."
     
-    # Get the size of the SQL dump file for progress calculation
-    local sql_file_size=$(stat -c %s "$sql_dump_file")
-    
     # Start the restoration process in the background
-# echo "compose_cmd: $compose_cmd" >&2
+    # set +e
     if [[ "$compose_cmd" == "docker" ]]; then
         (cat "$sql_dump_file" | $compose_cmd exec -i $db_service_name psql -U $db_user postgres > "$log_file" 2> >(tee -a "$log_file" >&2)) & local restore_pid=$!
-        #(cat "$sql_dump_file" | $compose_cmd exec $db_service_name psql -U $db_user postgres > "$log_file" 2>&1) & local restore_pid=$!
     else
-        (cat "$sql_dump_file" | $compose_cmd exec -T $db_service_name psql -U $db_user postgres > "$log_file" 2>&1) & local restore_pid=$!
+        (cat "$sql_dump_file" | $compose_cmd exec -T $db_service_name psql -U $db_user postgres > "$log_file" 2> >(tee -a "$log_file" >&2)) & local restore_pid=$!
     fi
     # Display progress indicator
     local start_time=$(date +%s)
     echo "Restoration in progress..."
+    echo "Time  - Log lines"
     
     while kill -0 $restore_pid 2>/dev/null; do
         # Calculate elapsed time
@@ -1354,20 +1489,22 @@ restore_database_with_progress() {
         if [ -f "$log_file" ]; then
             # Count lines in log file as a rough progress indicator
             local log_lines=$(wc -l < "$log_file")
-            printf "\rRestoring database... Elapsed time: %02d:%02d - Log lines: %d\r" "$minutes" "$seconds" "$log_lines"
+            printf "\r%02d:%02d - %d\r" "$minutes" "$seconds" "$log_lines"
         else
-            printf "\rRestoring database... Elapsed time: %02d:%02d\r" "$minutes" "$seconds"
+            printf "\r%02d:%02d" "$minutes" "$seconds"
         fi
         sleep 0.3
     done
-    
+    printf "\r%02d:%02d - %d\r" "$minutes" "$seconds" "$log_lines"
+
     # Check the exit status of the restoration process
     wait $restore_pid
     local restore_status=$?
     echo 
+    # set -e
     
     if [ $restore_status -eq 0 ]; then
-        echo "Successful restoration. Log: $log_file"
+        echo "Restoration completed. Log: $log_file"
         return 0
     else
         echo "Error occurred. Details: $log_file"
@@ -1375,6 +1512,11 @@ restore_database_with_progress() {
     fi
 }
 
+press_any_key() {
+    echo -n "Press any key to continue..."
+    read -n 1 -s -r
+    echo
+}
 
 
 # ------------------
@@ -1431,6 +1573,7 @@ case $1 in
         if ! confirm_action "Are you sure you want to continue?"; then
             exit 1
         fi
+
         sql_full_dump $SQL_DUMP_FILE $VERSION_FILE
 
         # Start test container and check if a container named "pg-test" already exists
@@ -1445,38 +1588,38 @@ case $1 in
                 echo "Container 'pg-test' exists but is not running. Removing it..."
                 docker rm -f pg-test >/dev/null
             fi
-            echo "Starting test container..."
-            docker run --name pg-test \
-                -d $DB_IMAGE || {
-                    echo "Error: Failed to start test container" >&2
-                    exit 1
-                }
+
+            if confirm_action "Are you sure you want to start the test container? This will download the latest PostgreSQL image if it's not available locally."; then
+                echo "Starting test container..."
+                docker run --name pg-test \
+                    -d $DB_IMAGE || {
+                        echo "Error: Failed to start test container" >&2
+                        exit 1
+                    }
+            else
+                echo "Test container startup cancelled."
+                exit 1
+            fi
+
             # Wait for test container to be ready
             wait_for_postgres $CONTAINER_NAME $DB_USER "postgres" 10 3
         fi
 
         # Restore dump
         echo
-        echo "-----------------------"
-        echo "Restoring dump file..."
-        echo "-----------------------"
-
-
-
-        set +e
+        echo "-----------------------------------------------"
+        echo "Restoring dump file to the pg-test container..."
+        echo "-----------------------------------------------"
         LOG_FILE="$BACKUP_DIR/db_restore_${DATE}.log"
         # if confirm_action "Are you sure you want to RESTORE the DATABASE? (cat $SQL_DUMP_FILE | $COMPOSE_CMD exec -T $DB_SERVICE_NAME psql -U $DB_USER postgres)"; then
-        restore_database_with_progress "$BACKUP_DIR/$SQL_DUMP_FILE" docker pg-test "$DB_USER" "$LOG_FILE" || exit 1
+        restore_database_with_progress "$BACKUP_DIR/$SQL_DUMP_FILE" docker pg-test "$DB_USER" "$LOG_FILE"
         # fi
-        set -e
 
         # docker cp "${BACKUP_DIR}/$SQL_DUMP_FILE" pg-test:/tmp/dump.sql
         # set +e
         # restore_output=$(docker exec pg-test psql -U $DB_USER -d postgres -f /tmp/dump.sql 2>&1)
         # exit_code=$?
         # set -e
-
-
 
         # if [ $exit_code -ne 0 ]; then
         #     echo "Error: Failed to restore dump" >&2
@@ -1515,7 +1658,7 @@ case $1 in
         fi
 
         echo
-        read -n 1 -s -r -p "Press any key to continue..."
+        press_any_key
 
         # Cleanup
         #docker rm -f pg-test >/dev/null
@@ -1565,9 +1708,6 @@ case $1 in
         echo ""
         ;;
     upgrade)
-        echo
-        echo "UNDER CONSTRUCTION"
-        echo "******************"
 
         check_container_storage
 
@@ -1585,47 +1725,75 @@ case $1 in
             fi
         done
 
-        # Stop Apache, Postgres
-        if ! confirm_action "Are you sure you want to STOP the APACHE?"; then
-            exit 1
+        echo
+        # Stop Apache
+        if ! $COMPOSE_CMD -f "$COMPOSE_FILE" ps app | grep -q "Up"; then
+            echo "Apache is already stopped."
+        else
+            if ! confirm_action "Are you sure you want to STOP the APACHE?"; then
+                exit 1
+            fi
+            $COMPOSE_CMD -f "$COMPOSE_FILE" stop app
         fi
-        $COMPOSE_CMD -f "$COMPOSE_FILE" stop app
 
         sql_full_dump "$SQL_DUMP_FILE" "$VERSION_FILE"
 
+        echo
         echo "Running SQL queries for validation..."
         run_test_script $CONTAINER_NAME "$DB_USER" "biomaps" "$BACKUP_DIR/$SQL_TEST_IN_PROD_DB_FILENAME"
 
         db_files_backup
 
-        echo
-        if ! confirm_action "Are you sure you want to STOP the POSTGRESQL?"; then
-            exit 1
-        fi
-        $COMPOSE_CMD -f "$COMPOSE_FILE" stop "$DB_SERVICE_NAME"
+        # Original yaml backup
+        echo 
+        echo "-------------------------------------------------------------------------------------------"
+        echo "Backing up original $COMPOSE_FILE file to $BACKUP_DIR/$(basename "$COMPOSE_FILE")_$DATE"
+        cp "$COMPOSE_FILE" "$BACKUP_DIR/$(basename "$COMPOSE_FILE")_$DATE"
+        echo "Backup completed successfully."
+        echo "-------------------------------------------------------------------------------------------"
 
-        # Create new volume
-        if ! docker volume create $PG_NEW_VOLUME >/dev/null 2>&1; then
-            echo "Error: Failed to create $PG_NEW_VOLUME volume or it already exists" >&2
+        press_any_key
+
+        echo
+        echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        if ! confirm_action "Are you sure you want to STOP ALL CONTAINERS (docker-compose down) and MODIFY $COMPOSE_FILE (or exit)!"; then
             exit 1
         fi
+        # $COMPOSE_CMD -f "$COMPOSE_FILE" stop "$DB_SERVICE_NAME"
+        $COMPOSE_CMD -f "$COMPOSE_FILE" down
+
+        # # Create new volume
+        # echo
+        # echo "Creating new volume: $PG_NEW_VOLUME..."
+        # if ! docker volume create $PG_NEW_VOLUME; then
+        #     echo "Error: Failed to create $PG_NEW_VOLUME volume" >&2
+        #     exit 1
+        # else
+        #     echo "Volume $PG_NEW_VOLUME created successfully."
+        # fi
 
         # Modify volume mappings in both the top-level volumes: section and within the db service's volumes in docker-compose file
         DB_VOLUME_NAME=$(extract_volume_from_compose "$COMPOSE_FILE" "$DB_TARGET_PATH")
         echo ""
-        echo "---------------------------------------------"
         if [[ -z "${DB_VOLUME_NAME}" ]]; then
+            echo "---------------------------------------------"
             echo "Could not find any Postgres data volume in ${COMPOSE_FILE}. "
+            echo "---------------------------------------------"
             create_volume "$COMPOSE_FILE" "$DB_SERVICE_NAME" "$PG_NEW_VOLUME" "$DB_TARGET_PATH"
+        elif [[ "$DB_VOLUME_NAME" == "$PG_NEW_VOLUME" ]]; then
+            echo "---------------------------------------------"
+            echo "The Postgres data volume is already set to $PG_NEW_VOLUME in ${COMPOSE_FILE}. No changes needed."
+            echo "---------------------------------------------"
         else    
+            echo "---------------------------------------------"
             echo "Found a Postgres Data volume: ${DB_VOLUME_NAME}"
+            echo "---------------------------------------------"
             replace_volume "$COMPOSE_FILE" "$DB_VOLUME_NAME" "$PG_NEW_VOLUME"
         fi
+
         echo "---------------------------------------------"
-
-        # Original yaml backup
-        cp "$COMPOSE_FILE" "$BACKUP_DIR/$(basename "$COMPOSE_FILE")_$DATE"
-
+        echo "Modifying images in docker-compose file..."
+        echo "---------------------------------------------"
         # Replace app image in docker-compose file
         update_image "$COMPOSE_FILE" "openbiomaps/web-app:latest" "$APP_IMAGE"
 
@@ -1633,9 +1801,13 @@ case $1 in
         update_image "$COMPOSE_FILE" "openbiomaps.*.mapserver" "$MAPSERVER_IMAGE"
 
         # Replace PostgreSQL database image in docker-compose file
-        update_image "$COMPOSE_FILE" "$DB_SERVICE_SEARCH_STRING" "$DB_IMAGE"
+        update_image "$COMPOSE_FILE" "$DB_SERVICE_SEARCH_STRINGS" "$DB_IMAGE"
 
-        # check docker-compose: named volume
+        press_any_key
+        echo
+        echo "----------------------------------------------------------------"
+        echo "Check if named volumes exist in the docker-compose configuration"
+        echo "----------------------------------------------------------------"
         check_volume_exists "$COMPOSE_FILE" "$PG_NEW_VOLUME"
         check_volume_exists "$COMPOSE_FILE" "root-private"
         check_volume_exists "$COMPOSE_FILE" "projects"
@@ -1643,24 +1815,64 @@ case $1 in
         check_volume_exists "$COMPOSE_FILE" "mapserver_log"
         check_volume_exists "$COMPOSE_FILE" "etc_openbiomaps"
 
-        if confirm_action "Would you like to review $COMPOSE_FILE and check for missing named volumes?"; then
+echo 
+echo "If any named volume is missing, copy and paste the following into the docker-compose.yml file:
+...
+services:
+  app:
+    image: $APP_IMAGE
+    volumes:
+      - var_lib:/var/lib/openbiomaps
+      - root-private:/var/www/html/biomaps/root-site/private
+      - etc_openbiomaps:/etc/openbiomaps
+      - projects:/var/www/html/biomaps/root-site/projects
+      - mapserver_log:/tmp/mapserver
+...      
+  mapserver:
+    image: $MAPSERVER_IMAGE
+    volumes:
+      - mapserver_log:/tmp/mapserver
+      - var_lib:/var/lib/openbiomaps
+      - projects:/var/www/html/biomaps/root-site/projects
+...
+  biomaps_db:
+    image: $DB_IMAGE
+    volumes:
+      - $PG_NEW_VOLUME:/var/lib/postgresql/data
+...
+volumes:
+  $PG_NEW_VOLUME:
+  root-private:
+  projects:
+  var_lib:
+  mapserver_log:
+  etc_openbiomaps:"
+
+
+        echo
+        if confirm_action "Would you like to REVIEW $COMPOSE_FILE and PASTE missing named volumes?"; then
             $(get_available_editor) "$COMPOSE_FILE"
         fi
 
-        if confirm_action "Are you sure you want to START the CONTAINERS (and stop app until restore)? ($COMPOSE_CMD -f "$COMPOSE_FILE" up -d)"; then
-            $COMPOSE_CMD stop
+        echo
+        if confirm_action "Are you sure, you want to START all CONTAINERS except 'app', and proceed with the RESTORE process OR EXIT? ($COMPOSE_CMD -f "$COMPOSE_FILE" up -d)"; then
             $COMPOSE_CMD -f "$COMPOSE_FILE" up -d
             $COMPOSE_CMD stop app
+        else 
+            exit 1
         fi
 
+        echo
+        echo "--------------------------------------------------------"
+        echo "Restoring dump file to the $DB_SERVICE_NAME container..."
+        echo "--------------------------------------------------------"
         # Database restore
-        set +e
         LOG_FILE="$BACKUP_DIR/db_restore_${DATE}.log"
-        if confirm_action "Are you sure you want to RESTORE the DATABASE? (cat $SQL_DUMP_FILE | $COMPOSE_CMD exec -T $DB_SERVICE_NAME psql -U $DB_USER postgres)"; then
-            restore_database_with_progress "$BACKUP_DIR/$SQL_DUMP_FILE" "$COMPOSE_CMD" "$DB_SERVICE_NAME" "$DB_USER" "$LOG_FILE" || exit 1
+        if confirm_action "Are you sure you want to RESTORE the DATABASE? (cat $BACKUP_DIR/$SQL_DUMP_FILE | $COMPOSE_CMD exec -T $DB_SERVICE_NAME psql -U $DB_USER postgres)"; then
+            restore_database_with_progress "$BACKUP_DIR/$SQL_DUMP_FILE" "$COMPOSE_CMD" "$DB_SERVICE_NAME" "$DB_USER" "$LOG_FILE"
+        else
+            exit 1
         fi
-        set -e
-
 
         # Run test queries and save output
         echo
@@ -1684,8 +1896,10 @@ case $1 in
             echo "Validation failed: Differences detected"
             echo "---------------------------------------"
             diff --side-by-side "$BACKUP_DIR/$SQL_TEST_IN_NEW_DB_FILENAME" "$BACKUP_DIR/$SQL_TEST_IN_PROD_DB_FILENAME"
-            exit 1
         fi
+
+        echo "Setting up biomapsadmin, sablon_admin and mainpage_admin password (./obm_post_install.sh update sql)..."
+        ./obm_post_install.sh update sql
 
         ;;
 
