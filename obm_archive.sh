@@ -25,7 +25,7 @@
 date=`date +"%b-%d-%y_%H:%M"`
 settings_path='' # e.g. _dinpi
 
-# cron like archive sttings
+# cron like archive settings
 doweek=`date +"%-d"`
 month=`date +"%-m"`
 day=`date +"%-u"`
