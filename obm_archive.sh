@@ -197,6 +197,18 @@ clean) echo "cleaning: gzipping sql files and deleting old gzip files"
 
 echo "."
 ;;
+folders) echo "dumping projects folders"
+    project_name=$(basename $(pwd))
+    echo "volume name in docker: ${project_name}_${projects_named_volume}"
+    echo "archive path: $archive_path"
+    docker run --rm \
+        -v ${project_name}_${projects_named_volume}:/data \
+        -v $archive_path:/backup \
+        busybox \
+        sh -c "cd /data && tar -czf /backup/${projects_named_volume}_backup_${date}.tar.gz ."
+
+echo "."
+;;
 
 esac
 exit 0

@@ -10,6 +10,7 @@ archive_path="/home/archives"
 pgport="5432"
 pg_dump="pg_dump -p $pgport"
 psql="psql -p $pgport"
+projects_named_volume="projects"
 
 # FOR DOCKER based OBM systems
 # docker="/usr/bin/docker-compose -f /PATH/TO/docker-compose.yml exec -T"
