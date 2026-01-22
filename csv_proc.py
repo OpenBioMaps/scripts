@@ -1,6 +1,7 @@
 # @Miklós Bán banm@vocs.unideb.hu
 # 2024-05-31
-# Version 1.2
+# 2025-01-22
+# Version 1.3
 # A brute force csv processing and transforming to create a postgres table
 #
 # It uses a json config file
@@ -12,6 +13,7 @@
 #    "dbport": "",
 #    "db_schema_name": "",  //default is public
 #    "db_table_name": "",   //default is the file's name
+#    "db_table_comment": "",
 #    "csv_file": "",        //optional can be passed as a cml argument
 #    "csv_sep": ";"         // default is ,
 #    "csv_quote": "'",      // default is "
@@ -20,7 +22,7 @@
 #}
 
 # Usage:
-# python3 csv_proc.py config.json [x.csv]
+# python3 csv_proc.py config.json [--csv_file x.csv] [--target_table table_name] [--table_comment '...']
 
 import pandas as pd
 import psycopg2
@@ -43,6 +45,8 @@ warnings.filterwarnings("ignore", category=UserWarning)
 parser = argparse.ArgumentParser(description="CSV Processing application.")
 parser.add_argument("config_file", help="Config file name")
 parser.add_argument("--csv_file", help="csv file name")
+parser.add_argument("--target_table", help="target table name")
+parser.add_argument("--table_comment", help="optional table comments")
 
 # Argumentumok beolvasása
 args = parser.parse_args()
@@ -60,7 +64,7 @@ except FileNotFoundError:
     print(f"Error: The given config file not found: {args.config_file}")
     sys.exit(1)
 
-file_name = config.get('csv_file', args.csv_file)
+file_name = args.csv_file or config.get('csv_file')
 separator = config.get('csv_sep', ',')
 quote = config.get('csv_quote', '"')
 import_data = config.get('import_data', False)
@@ -70,6 +74,12 @@ delete_data = config.get('delete_data', False)
 encoding = config.get('character_encoding', 'utf8')
 sample_size = config.get('sample_size', 4000)
 row_error_check = config.get('row_error_check', False)
+db_table_name = args.target_table or config.get('db_table_name') or None
+db_table_comment = args.table_comment or config.get('db_table_comment')
+
+if not file_name:
+    print("Error: CSV file name not provided. Please specify either --csv_file argument or 'csv_file' in the config file.")
+    sys.exit(1)
 
 # Detecting character encoding
 with open(file_name, 'rb') as f:
@@ -155,12 +165,16 @@ cur = conn.cursor()
 
 # Creating table name from the file name
 base_name = os.path.splitext(os.path.basename(file_name))[0]
-table_name = config['db_table_name'] if config['db_table_name'] else ('t' + base_name if base_name[0].isdigit() else base_name)
+table_name = db_table_name if db_table_name else ('t' + base_name if base_name[0].isdigit() else base_name)
 schema_name = config['db_schema_name'] if config['db_schema_name'] else 'public'
 
 columns_with_types = ',\n'.join([f'"{col}" {column_types[col]}' for col in df.columns])
 create_table_query = f'CREATE TABLE {schema_name}.{table_name} (\n{columns_with_types});'
 delete_data_query = f'DELETE FROM {schema_name}.{table_name};'
+
+if db_table_comment:
+    safe_comment = db_table_comment.replace("'", "''")
+    create_table_query += f"\nCOMMENT ON TABLE {schema_name}.{table_name} IS '{safe_comment}';"
 
 if import_data:
     try:
@@ -169,7 +183,7 @@ if import_data:
         
         if create_table:
             cur.execute(create_table_query)
-
+        
         if delete_data:
             print("Do you want to truncate the destination table?")
             print(f"   `{delete_data_query}`")
