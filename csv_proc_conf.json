@@ -5,6 +5,7 @@
     "dbpass": "",
     "db_schema_name": "",
     "db_table_name": "",
+    "db_table_comment": "",
     "csv_file": "",
     "csv_sep": ";",
     "import_data": true,
