@@ -5,12 +5,14 @@
     "dbpass": "",
     "db_schema_name": "",
     "db_table_name": "",
-    "db_table_comment": "",
     "csv_file": "",
     "csv_sep": ";",
-    "import_data": true,
-    "create_table": false,
-    "insert_data": true,
-    "delete_data": true,
-    "encoding": "utf8"
+    "csv_quote": "\"",
+    "dry_run": true,
+    "create_table": true,
+    "insert_rows": true,
+    "delete_data": false,
+    "encoding": "utf8",
+    "sample_size" : 4000,
+    "row_error_check" : false
 }
