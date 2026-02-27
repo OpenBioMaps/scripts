@@ -389,7 +389,7 @@ fi
     # }
 
     # Get file size for progress calculation
-    file_size=$(docker exec -t "$CONTAINER_NAME" bash -c "stat -c %s /home/$sql_dump_file 2>/dev/null | awk '{printf \"%d\", \$1}'" | tr -cd '0-9')
+    file_size=$(docker exec -t "$CONTAINER_NAME" bash -c "stat -c %s /home/$sql_dump_file 2>/dev/null" | tr -cd '0-9')
 
     # Copy file from container to host
     docker cp "$CONTAINER_NAME:/home/$sql_dump_file" "${BACKUP_DIR}/" & copy_pid=$!
@@ -495,7 +495,7 @@ fi
     echo "Copying compressed files to host..."
 
     # Get file size for progress calculation
-    file_size=$(docker exec -t "$CONTAINER_NAME" bash -c "stat -c %s /home/$COMPRESSED_DB_FILES 2>/dev/null | awk '{printf \"%d\", \$1}'" | tr -cd '0-9')
+    file_size=$(docker exec -t "$CONTAINER_NAME" bash -c "stat -c %s /home/$COMPRESSED_DB_FILES 2>/dev/null" | tr -cd '0-9')
 
     # Copy file from container to host
     docker cp "$CONTAINER_NAME:/home/$COMPRESSED_DB_FILES" "${BACKUP_DIR}/$COMPRESSED_DB_FILES" & copy_pid=$!

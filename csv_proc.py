@@ -1,26 +1,33 @@
 # @Miklós Bán banm@vocs.unideb.hu
 # 2024-05-31
-# Version 1.2
-# A brute force csv processing and transforming to create a postgres table
+# 2025-02-24
+# Version 1.31
+# A brute force csv processing and transforming to create or fill a postgres table
 #
-# It uses a json config file
+# It uses a json config file, which can be combined command line arguments.
 #{
-#    "dbhost": "",
-#    "dbname": "",
-#    "dbuser": "",
-#    "dbpass": "",
-#    "dbport": "",
-#    "db_schema_name": "",  //default is public
-#    "db_table_name": "",   //default is the file's name
-#    "csv_file": "",        //optional can be passed as a cml argument
-#    "csv_sep": ";"         // default is ,
-#    "csv_quote": "'",      // default is "
-#    "import_data": false,   // print to stdout or execute postgres commands
-#    "create_table": true
+#    "dbhost": "",          // Obligatory. An url or ip address of target PostgrSQL server
+#    "dbname": "",          // Obligatory. A database name
+#    "dbuser": "",          // Obligatory. A user name with connect to the database
+#    "dbpass": "",          // Obligatory. A password to autenticate
+#    "dbport": "",          // Optional. Default is 5432
+#    "db_schema_name": "",  // Optional. Default is public
+#    "db_table_name": "",   // Optional. Default is the file's name, can be passed with cml argument --target_table
+#    "db_table_comment": "",// Optional. Default is NULL, can be passed with cml argument --table_comment
+#    "csv_file": "",        // Obligatory. Data file name we would like to process. Can be passed as a cml argument --csv-file
+#    "csv_sep": ";"         // Optional. Default is ,
+#    "csv_quote": "'",      // Optional. Default is "
+#    "dry_run": true,       // Optional. Default is true, which means printing all SQL commands to the stdout, no operations. If true, executing SQL commands on the server
+#    "create_table": true,  // Optional. Default is creating create table command for `db_table_name` in `db_schema_name`. If false, we assume, the target table is already exists.
+#    "insert_rows": true,   // Optional. Default is creating insert rows command for `db_table_name`
+#    "delete_data": false,  // Optional. Delete data from `db_table_name` before inserting new lines. It has no meaning if the table is a newly created one.
+#    "encoding": "utf8",    // Optional. Default is utf8
+#    "sample_size" = 4000,  // Optional. Default is reading 4000 lines as a sample from the file to analyse the column types
+#    "row_error_check" = false  // Optional. Default is no row based error checking. If true each line will be inserted separately and printing error messages for the spcific row.
 #}
 
 # Usage:
-# python3 csv_proc.py config.json [x.csv]
+# python csv_proc.py config.json [--csv_file x.csv] [--target_table table_name] [--table_comment '...']
 
 import pandas as pd
 import psycopg2
@@ -40,9 +47,11 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 
 # Argumentumok definiálása
-parser = argparse.ArgumentParser(description="CSV Processing application.")
+parser = argparse.ArgumentParser(description="CSV Processing application for Postgres SQL Import.")
 parser.add_argument("config_file", help="Config file name")
-parser.add_argument("--csv_file", help="csv file name")
+parser.add_argument("--csv_file", help="Csv file name")
+parser.add_argument("--target_table", help="Target table name")
+parser.add_argument("--table_comment", help="Table comments")
 
 # Argumentumok beolvasása
 args = parser.parse_args()
@@ -60,16 +69,23 @@ except FileNotFoundError:
     print(f"Error: The given config file not found: {args.config_file}")
     sys.exit(1)
 
-file_name = config.get('csv_file', args.csv_file)
+file_name = args.csv_file or config.get('csv_file')
 separator = config.get('csv_sep', ',')
 quote = config.get('csv_quote', '"')
-import_data = config.get('import_data', False)
-insert_data = config.get('insert_data', False)
+dry_run = config.get('dry_run', True)
+import_data = not dry_run
+insert_rows = config.get('insert_rows', True)
 create_table = config.get('create_table', True)
 delete_data = config.get('delete_data', False)
 encoding = config.get('character_encoding', 'utf8')
 sample_size = config.get('sample_size', 4000)
 row_error_check = config.get('row_error_check', False)
+db_table_name = args.target_table or config.get('db_table_name') or None
+db_table_comment = args.table_comment or config.get('db_table_comment')
+
+if not file_name:
+    print("Error: CSV file name not provided. Please specify either --csv_file argument or 'csv_file' in the config file.")
+    sys.exit(1)
 
 # Detecting character encoding
 with open(file_name, 'rb') as f:
@@ -78,7 +94,8 @@ with open(file_name, 'rb') as f:
 
 # Reading a sample from the input file
 with open(file_name, mode='r', encoding='utf-8') as file:
-    sample_df = pd.read_csv(file, sep=separator, quotechar=quote, nrows=sample_size)
+    #sample_df = pd.read_csv(file, sep=separator, quotechar=quote, nrows=sample_size, escapechar='\\', engine='python')
+    sample_df = pd.read_csv(file, sep=separator, quotechar=quote, nrows=sample_size, low_memory=False, low_memory=False)
 
 # Type check
 def infer_sql_type(series):
@@ -137,6 +154,7 @@ column_types = {col: infer_sql_type(sample_df[col]) for col in sample_df.columns
 
 # Reading input file
 with open(file_name, mode='r', encoding='utf-8') as file:
+    #df = pd.read_csv(file, sep=separator, quotechar=quote, escapechar='\\', engine='python')
     df = pd.read_csv(file, sep=separator, quotechar=quote, low_memory=False)
 
 # Normalize the column names for the main DataFrame as well
@@ -155,12 +173,16 @@ cur = conn.cursor()
 
 # Creating table name from the file name
 base_name = os.path.splitext(os.path.basename(file_name))[0]
-table_name = config['db_table_name'] if config['db_table_name'] else ('t' + base_name if base_name[0].isdigit() else base_name)
+table_name = db_table_name if db_table_name else ('t' + base_name if base_name[0].isdigit() else base_name)
 schema_name = config['db_schema_name'] if config['db_schema_name'] else 'public'
 
 columns_with_types = ',\n'.join([f'"{col}" {column_types[col]}' for col in df.columns])
 create_table_query = f'CREATE TABLE {schema_name}.{table_name} (\n{columns_with_types});'
 delete_data_query = f'DELETE FROM {schema_name}.{table_name};'
+
+if db_table_comment:
+    safe_comment = db_table_comment.replace("'", "''")
+    create_table_query += f"\nCOMMENT ON TABLE {schema_name}.{table_name} IS '{safe_comment}';"
 
 if import_data:
     try:
@@ -169,7 +191,7 @@ if import_data:
         
         if create_table:
             cur.execute(create_table_query)
-
+        
         if delete_data:
             print("Do you want to truncate the destination table?")
             print(f"   `{delete_data_query}`")
@@ -178,7 +200,7 @@ if import_data:
                 cur.execute(delete_data_query)
 
         # Import data
-        if insert_data:
+        if insert_rows:
 
             # A progress bar
             if row_error_check:
@@ -267,7 +289,7 @@ else:
         print(delete_data_query)
     
     # Print data
-    if insert_data:
+    if insert_rows:
         for index, row in df.iterrows():
             clean_row = []
             for col_name, val in zip(df.columns, row):
