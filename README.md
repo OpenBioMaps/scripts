@@ -87,3 +87,16 @@ Usage:
 ## tracklog process
 
 tracklog export processing for upload
+
+## docker_postgres_upgrade
+
+Semiautomated upgrade solution for PostgreSQL databases in Docker containers.
+
+#### Usage
+```./docker_postgres_upgrade.sh <command> [db_container_name]```
+
+#### Commands
+- **testupgrade**: Tests upgrade without stopping services.
+- **upgrade**: Performs production upgrade after confirmation.
+
+**Note:** Use `upgrade` only after successful `testupgrade`.

@@ -25,7 +25,7 @@
 date=`date +"%b-%d-%y_%H:%M"`
 settings_path='' # e.g. _dinpi
 
-# cron like archive sttings
+# cron like archive settings
 doweek=`date +"%-d"`
 month=`date +"%-m"`
 day=`date +"%-u"`
@@ -194,6 +194,18 @@ clean) echo "cleaning: gzipping sql files and deleting old gzip files"
     # clean logs
     echo "DELETE FROM oauth_access_tokens WHERE expires < now();" | $psql -t -h localhost -U $admin_user $system_database
     echo "DELETE FROM oauth_refresh_tokens WHERE expires < now();" | $psql -t -h localhost -U $admin_user $system_database
+
+echo "."
+;;
+folders) echo "dumping projects folders"
+    project_name=$(basename $(pwd))
+    echo "volume name in docker: ${project_name}_${projects_named_volume}"
+    echo "archive path: $archive_path"
+    docker run --rm \
+        -v ${project_name}_${projects_named_volume}:/data \
+        -v $archive_path:/backup \
+        busybox \
+        sh -c "cd /data && tar -czf /backup/${projects_named_volume}_backup_${date}.tar.gz ."
 
 echo "."
 ;;
