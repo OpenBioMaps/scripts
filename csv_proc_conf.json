@@ -13,6 +13,7 @@
     "insert_rows": true,
     "delete_data": false,
     "encoding": "utf8",
-    "sample_size" : 4000,
-    "row_error_check" : false
+    "sample_size" : 10000,
+    "row_error_check" : false,
+    "sql_copy_no": false
 }
