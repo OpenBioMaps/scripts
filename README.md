@@ -23,7 +23,15 @@ Example cron:
 0 4 * * * /home/user/Scripts/obm_archive.sh sync user@remote.server.org /home/archives/local_server.org_archive
 # Syncing with curl to remote servers (e.g. Nextcloud)
 0 4 * * * /home/users/scripts/obm_archive.sh curl-sync dsusTsl92772easd: https://nextcloud.remote-server.org/public.php/webdav/
+# Full project folder backup
+0 1 * * 0 /home/user/Scripts/obm_archive.sh folders
+# Incremental project folder backup
+0 1 * * 1-6 /home/user/Scripts/obm_archive.sh folders-incremental
 ```
+
+The `folders` and `folders-incremental` commands lock the created archive file with the Linux immutable flag (`chattr +i`).
+To delete a backup file, remove the lock first with `chattr -i /home/archives/<file>.tar.gz`.
+The `folders-incremental` command stores only the `local` subdirectory from each project folder in the volume root.
 
 ## create_table_from_csv.R
 

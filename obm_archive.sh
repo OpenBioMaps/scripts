@@ -37,6 +37,18 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
 
 source $DIR/obm_archive_settings$settings_path.sh
 
+folders_backup_state_path="${archive_path}/.folders_backup_state"
+
+lock_backup_file() {
+    local backup_file="$1"
+
+    if ! chattr +i "$backup_file"; then
+        echo "Error: Failed to lock backup file with immutable flag: $backup_file"
+        echo "The archive was created, but it is still deletable until this is fixed."
+        exit 1
+    fi
+}
+
 #tables=( $(cat $table_list) )
 dbs=($all_project_databases)
 tables=()
@@ -151,7 +163,7 @@ sync) echo "syncing to remote hosts"
     if [ "$pattern" == '' ]; then
         # copy all files which newer than 3 days
         cd $archive_path
-        rsync -Ravh --files-from=<(find ./ -mtime -3 -type f) . $remote_ssh:$remote_path
+        rsync -Ravh --files-from=<(find ./ -path './.folders_backup_state' -prune -o -mtime -3 -type f -print) . $remote_ssh:$remote_path
     else
         # copy pattern match files
         find $archive_path/ -name '$pattern' -type f -mtime -3 -print0 | tar --null --files-from=/dev/stdin -cf - | ssh $remote_ssh tar -xf - -C $remote_path/
@@ -170,7 +182,7 @@ curl-sync) echo "syncing to remote hosts using curl"
 
     # copy all files which newer than 3 days
     cd $archive_path
-    find ./ -mtime -3 -type f | while read fname; do
+    find ./ -path './.folders_backup_state' -prune -o -mtime -3 -type f -print | while read fname; do
         bname=`basename "$fname"`
         curl -X PUT -u $remote_user "$remote_path/$bname" --data-binary @"$fname"
     done    
@@ -198,14 +210,45 @@ clean) echo "cleaning: gzipping sql files and deleting old gzip files"
 echo "."
 ;;
 folders) echo "dumping projects folders"
-    project_name=$(basename $(pwd))
-    echo "volume name in docker: ${project_name}_${projects_named_volume}"
+    echo "volume name in docker: $projects_named_volume"
     echo "archive path: $archive_path"
     docker run --rm \
-        -v ${project_name}_${projects_named_volume}:/data \
+        -v ${projects_named_volume}:/data \
         -v $archive_path:/backup \
         busybox \
         sh -c "cd /data && tar -czf /backup/${projects_named_volume}_backup_${date}.tar.gz ."
+
+    lock_backup_file "$archive_path/${projects_named_volume}_backup_${date}.tar.gz"
+
+echo "."
+;;
+folders-incremental) echo "dumping projects folders incrementally"
+    volume_mountpoint=$(docker volume inspect -f '{{ .Mountpoint }}' "$projects_named_volume" 2>/dev/null)
+
+    if [ -z "$volume_mountpoint" ]; then
+        echo "Error: Docker volume not found: $projects_named_volume"
+        exit 1
+    fi
+
+    mkdir -p "$archive_path" "$folders_backup_state_path"
+    echo "volume name in docker: $projects_named_volume"
+    echo "volume mountpoint: $volume_mountpoint"
+    echo "archive path: $archive_path"
+
+    snapshot_file="$folders_backup_state_path/${projects_named_volume}.snar"
+    backup_file="$archive_path/${projects_named_volume}_backup_incremental_${date}.tar.gz"
+    mapfile -t local_dirs < <(
+        cd "$volume_mountpoint" &&
+        find . -mindepth 2 -maxdepth 2 -type d -name local -print | sed 's|^\./||' | sort
+    )
+
+    if [ "${#local_dirs[@]}" -eq 0 ]; then
+        echo "Error: No local directories found under $projects_named_volume"
+        exit 1
+    fi
+
+    tar --listed-incremental="$snapshot_file" -C "$volume_mountpoint" -czf "$backup_file" "${local_dirs[@]}"
+    lock_backup_file "$backup_file"
 
 echo "."
 ;;
