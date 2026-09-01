@@ -1,8 +1,9 @@
 # @Miklós Bán banm@vocs.unideb.hu
 # 2024-05-31
 # 2025-02-24
+# 2026-06-30
 #
-# Version 1.33
+# Version 1.34
 #
 # A brute force csv processing and transforming to create or fill a postgres table
 #
@@ -52,43 +53,100 @@ import io
 warnings.filterwarnings("ignore", category=UserWarning)
 
 
-# Argumentumok definiálása
-parser = argparse.ArgumentParser(description="CSV Processing application for Postgres SQL Import.")
-parser.add_argument("config_file", help="Config file name")
-parser.add_argument("--csv_file", help="Csv file name")
-parser.add_argument("--target_table", help="Target table name")
-parser.add_argument("--table_comment", help="Table comments")
+parser = argparse.ArgumentParser(
+    description="CSV Processing application for PostgreSQL import."
+)
 
-# Argumentumok beolvasása
+# Optional config file
+parser.add_argument("config_file", nargs="?", help="Config file name")
+
+# Database
+parser.add_argument("--dbhost")
+parser.add_argument("--dbname")
+parser.add_argument("--dbuser")
+parser.add_argument("--dbpass")
+parser.add_argument("--dbport", type=int)
+parser.add_argument("--db_schema_name")
+
+# Target
+parser.add_argument("--csv_file")
+parser.add_argument("--target_table")
+parser.add_argument("--table_comment")
+
+# CSV
+parser.add_argument("--csv_sep")
+parser.add_argument("--csv_quote")
+parser.add_argument("--encoding")
+parser.add_argument("--sample_size", type=int)
+
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    return v.lower() in ("1", "true", "yes", "y")
+# Behaviour
+parser.add_argument("--create_table", type=str2bool)
+parser.add_argument("--delete_data", type=str2bool)
+parser.add_argument("--insert_rows", type=str2bool)
+parser.add_argument("--dry_run", type=str2bool)
+parser.add_argument("--row_error_check",  type=str2bool)
+parser.add_argument("--sql_copy_no",  type=str2bool)
+
 args = parser.parse_args()
 
-# Ellenőrzés, hogy megadott-e a felhasználó argumentumokat
-if not args.config_file:
-    print("Error: No config file name provided!")
-    sys.exit(1)
+config = {}
 
-# Reading config file
-try:
-    with open(args.config_file, 'r') as config_file:
-        config = json.load(config_file)
-except FileNotFoundError:
-    print(f"Error: The given config file not found: {args.config_file}")
-    sys.exit(1)
+if args.config_file:
+    try:
+        with open(args.config_file, "r") as f:
+            config = json.load(f)
+    except FileNotFoundError:
+        print(f"Error: Config file not found: {args.config_file}")
+        sys.exit(1)
 
 file_name = args.csv_file or config.get('csv_file')
-separator = config.get('csv_sep', ',')
-quote = config.get('csv_quote', '"')
-dry_run = config.get('dry_run', True)
-import_data = not dry_run
-insert_rows = config.get('insert_rows', True)
-create_table = config.get('create_table', True)
-delete_data = config.get('delete_data', False)
-encoding = config.get('character_encoding', 'utf8')
-sample_size = config.get('sample_size', 4000)
-row_error_check = config.get('row_error_check', False)
-db_table_name = args.target_table or config.get('db_table_name') or None
+separator = args.csv_sep or config.get('csv_sep', ',')
+quote = args.csv_quote or config.get('csv_quote', '"')
+dbhost = args.dbhost or config.get('dbhost')
+dbname = args.dbname or config.get('dbname')
+dbuser = args.dbuser or config.get('dbuser')
+dbpass = args.dbpass or config.get('dbpass')
+dbport = args.dbport or config.get('dbport', 5432)
+db_schema_name = args.db_schema_name or config.get('db_schema_name', 'public')
+db_table_name = args.target_table or config.get('db_table_name')
 db_table_comment = args.table_comment or config.get('db_table_comment')
-sql_copy_no = config.get('sql_copy_no', False)
+encoding = args.encoding or config.get('encoding', 'utf8')
+sample_size = args.sample_size or config.get('sample_size', 10000)
+dry_run = (
+        args.dry_run
+        if args.dry_run is not None
+        else config.get('dry_run', True)
+)
+import_data = not dry_run
+insert_rows = (
+        args.insert_rows
+        if args.insert_rows is not None
+        else config.get('insert_rows', True)
+)
+create_table = (
+        args.create_table
+        if args.create_table is not None
+        else config.get('create_table', True)
+)
+delete_data = (
+        args.delete_data
+        if args.delete_data is not None
+        else config.get('delete_data', False)
+)
+row_error_check = (
+        args.row_error_check
+        if args.row_error_check is not None
+        else config.get('row_error_check', False)
+)
+sql_copy_no = (
+        args.sql_copy_no
+        if args.sql_copy_no is not None
+        else config.get('sql_copy_no', False)
+)
 
 if not file_name:
     print("Error: CSV file name not provided. Please specify either --csv_file argument or 'csv_file' in the config file.")
