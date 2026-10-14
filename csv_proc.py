@@ -3,7 +3,7 @@
 # 2025-02-24
 # 2026-06-30
 #
-# Version 1.34
+# Version 1.35
 #
 # A brute force csv processing and transforming to create or fill a postgres table
 #
@@ -389,7 +389,7 @@ table_name = db_table_name if db_table_name else ('t' + base_name if base_name[0
 schema_name = config['db_schema_name'] if config['db_schema_name'] else 'public'
 
 columns_with_types = ',\n'.join([f'"{col}" {column_types[col]}' for col in df.columns])
-create_table_query = f'CREATE TABLE {schema_name}.{table_name} (\n{columns_with_types});'
+create_table_query = f'CREATE TABLE IF NOT EXISTS {schema_name}.{table_name} (\n{columns_with_types});'
 delete_data_query = f'DELETE FROM {schema_name}.{table_name};'
 
 if db_table_comment:
